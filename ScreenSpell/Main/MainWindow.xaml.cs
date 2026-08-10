@@ -52,6 +52,7 @@ namespace ScreenSpell.Main
             IntervalBox.Text = settings.ScanIntervalMs.ToString(CultureInfo.InvariantCulture);
             ConfidenceBox.Text = settings.MinOcrConfidence.ToString(CultureInfo.InvariantCulture);
             OverlayCheckBox.IsChecked = settings.ShowOverlay;
+            ActiveWindowCheckBox.IsChecked = settings.ScanActiveWindowOnly;
         }
 
         private void StartScanning()
@@ -98,6 +99,7 @@ namespace ScreenSpell.Main
                     settings.MinOcrConfidence = Math.Clamp(confidence, 0, 1);
 
                 settings.ShowOverlay = OverlayCheckBox.IsChecked == true;
+                settings.ScanActiveWindowOnly = ActiveWindowCheckBox.IsChecked == true;
             });
 
             LoadSettingsIntoUi();

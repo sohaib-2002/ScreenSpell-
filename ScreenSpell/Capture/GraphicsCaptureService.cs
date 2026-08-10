@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Windows.Forms;
 using ScreenSpell.Core.Interfaces;
@@ -20,11 +21,47 @@ namespace ScreenSpell.Capture
             return CaptureRegion(bounds.X, bounds.Y, bounds.Width, bounds.Height);
         }
 
+        public ScreenFrame CaptureActiveWindow()
+        {
+            var bounds = ForegroundWindowBounds();
+            return bounds is null
+                ? CaptureScreen()
+                : CaptureRegion(bounds.Value.X, bounds.Value.Y, bounds.Value.Width, bounds.Value.Height);
+        }
+
         /// <summary>Grabs every monitor of the virtual desktop in one frame.</summary>
         public ScreenFrame CaptureVirtualScreen()
         {
             var bounds = SystemInformation.VirtualScreen;
             return CaptureRegion(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        }
+
+        /// <summary>
+        /// Visible bounds of the foreground window, clipped to the virtual desktop. Uses the
+        /// DWM frame so the invisible resize border of a normal window is not captured.
+        /// </summary>
+        private static Rectangle? ForegroundWindowBounds()
+        {
+            var handle = NativeMethods.GetForegroundWindow();
+            if (handle == IntPtr.Zero)
+                return null;
+
+            NativeMethods.Rect rect;
+            if (NativeMethods.DwmGetWindowAttribute(
+                    handle,
+                    NativeMethods.DwmwaExtendedFrameBounds,
+                    out rect,
+                    Marshal.SizeOf<NativeMethods.Rect>()) != 0
+                && !NativeMethods.GetWindowRect(handle, out rect))
+            {
+                return null;
+            }
+
+            var bounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+            bounds.Intersect(SystemInformation.VirtualScreen);
+
+            // A minimized or collapsed window is not worth a scan.
+            return bounds.Width < 32 || bounds.Height < 32 ? null : bounds;
         }
 
         public ScreenFrame CaptureRegion(int x, int y, int width, int height)
@@ -46,13 +83,37 @@ namespace ScreenSpell.Capture
             try
             {
                 var pixels = new byte[data.Stride * height];
-                System.Runtime.InteropServices.Marshal.Copy(data.Scan0, pixels, 0, pixels.Length);
+                Marshal.Copy(data.Scan0, pixels, 0, pixels.Length);
                 return new ScreenFrame(width, height, data.Stride, pixels, x, y);
             }
             finally
             {
                 bitmap.UnlockBits(data);
             }
+        }
+
+        private static class NativeMethods
+        {
+            public const int DwmwaExtendedFrameBounds = 9;
+
+            [StructLayout(LayoutKind.Sequential)]
+            public struct Rect
+            {
+                public int Left;
+                public int Top;
+                public int Right;
+                public int Bottom;
+            }
+
+            [DllImport("user32.dll")]
+            public static extern IntPtr GetForegroundWindow();
+
+            [DllImport("user32.dll")]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            public static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
+
+            [DllImport("dwmapi.dll")]
+            public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attribute, out Rect value, int size);
         }
     }
 }

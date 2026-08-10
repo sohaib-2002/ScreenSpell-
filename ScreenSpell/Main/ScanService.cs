@@ -25,6 +25,7 @@ namespace ScreenSpell.Main
         private CancellationTokenSource? _cancellation;
         private Task? _loop;
         private string _lastRendered = string.Empty;
+        private string _lastRegion = string.Empty;
 
         public ScanService(
             IScreenCaptureService capture,
@@ -72,6 +73,7 @@ namespace ScreenSpell.Main
             _cancellation?.Cancel();
             _stabilizer.Reset();
             _lastRendered = string.Empty;
+            _lastRegion = string.Empty;
             _overlay.Clear();
             Report("متوقف");
         }
@@ -122,7 +124,21 @@ namespace ScreenSpell.Main
         private async Task ScanAsync(CancellationToken cancellationToken, bool stabilize = true)
         {
             var settings = _settings.Settings;
-            var frame = _capture.CaptureScreen();
+            var frame = settings.ScanActiveWindowOnly
+                ? _capture.CaptureActiveWindow()
+                : _capture.CaptureScreen();
+
+            // Switching or moving a window invalidates every underline we are showing, so drop
+            // them now instead of leaving them over unrelated content until the next scan.
+            var region = $"{frame.OriginX},{frame.OriginY},{frame.Width}x{frame.Height}";
+            if (region != _lastRegion)
+            {
+                _lastRegion = region;
+                _stabilizer.Reset();
+                _lastRendered = string.Empty;
+                _ocrCache.Invalidate();
+                _overlay.Clear();
+            }
 
             if (_ocrCache.TryGetCachedFrame(frame, out var cachedWords))
             {

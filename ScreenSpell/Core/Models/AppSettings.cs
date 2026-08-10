@@ -3,7 +3,14 @@ namespace ScreenSpell.Core.Models
     public class AppSettings
     {
         /// <summary>Delay between two screen scans, in milliseconds.</summary>
-        public int ScanIntervalMs { get; set; } = 1500;
+        public int ScanIntervalMs { get; set; } = 800;
+
+        /// <summary>
+        /// Scan only the window you are working in instead of the whole screen. This is what
+        /// keeps the loop responsive while switching apps; turn it off to underline everything
+        /// visible, at a much higher cost per scan.
+        /// </summary>
+        public bool ScanActiveWindowOnly { get; set; } = true;
 
         /// <summary>OCR words below this confidence are ignored.</summary>
         public double MinOcrConfidence { get; set; } = 0.5;
@@ -62,6 +69,7 @@ namespace ScreenSpell.Core.Models
         public AppSettings Clone() => new()
         {
             ScanIntervalMs = ScanIntervalMs,
+            ScanActiveWindowOnly = ScanActiveWindowOnly,
             MinOcrConfidence = MinOcrConfidence,
             OcrScale = OcrScale,
             Language = Language,

@@ -52,6 +52,7 @@ cannot be executed there.
 | الفاصل الزمني | milliseconds between two scans (minimum 200) |
 | أقل ثقة | OCR words below this confidence are skipped |
 | إظهار الطبقة فوق الشاشة | toggles the on-screen squiggles |
+| النافذة النشطة فقط | scans only the window in front, which is much faster |
 | تجاهل | ignores the word for this session |
 | إضافة إلى القاموس | adds the word to your dictionary, permanently |
 
@@ -65,7 +66,8 @@ Settings live in `%LOCALAPPDATA%\ScreenSpell\settings.json` and are written when
 
 ```jsonc
 {
-  "ScanIntervalMs": 1500,        // delay between scans
+  "ScanIntervalMs": 800,         // delay between scans
+  "ScanActiveWindowOnly": true,  // scan the foreground window instead of the whole screen
   "MinOcrConfidence": 0.5,       // 0..1, OCR words below this are ignored
   "OcrScale": 2.0,               // frame is enlarged this much before OCR (1 = off, applied at startup)
   "Language": "ar",              // primary OCR language tag

@@ -20,6 +20,7 @@
                 <TextBlock Text="أقل ثقة:" VerticalAlignment="Center" Margin="6,0" />
                 <TextBox x:Name="ConfidenceBox" Width="50" VerticalAlignment="Center" />
                 <CheckBox x:Name="OverlayCheckBox" Content="إظهار الطبقة فوق الشاشة" VerticalAlignment="Center" Margin="8,0" />
+                <CheckBox x:Name="ActiveWindowCheckBox" Content="النافذة النشطة فقط" VerticalAlignment="Center" Margin="0,0,8,0" />
                 <Button Content="حفظ الإعدادات" Padding="10,4" Click="SaveSettingsButton_Click" />
             </ToolBar>
         </ToolBarTray>
