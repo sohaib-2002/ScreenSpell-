@@ -15,52 +15,55 @@ namespace ScreenSpell.OCR
     /// Wraps the OCR engine shipped with Windows 10/11. Recognition for a language is only
     /// possible when its optional "Basic typing / OCR" feature is installed, so the provider
     /// reports <see cref="IsAvailable"/> instead of throwing when Arabic is missing.
+    /// One engine is created per configured language and the frame is recognised with each of
+    /// them, because a single engine only ever returns text in its own script.
     /// </summary>
     [SupportedOSPlatform("windows10.0.19041.0")]
     public class WindowsOcrProvider : IOcrProvider
     {
         private readonly ILogger<WindowsOcrProvider> _logger;
-        private readonly OcrEngine? _engine;
+        private readonly List<OcrEngine> _engines = new();
 
         public WindowsOcrProvider(AppSettings? settings = null, ILogger<WindowsOcrProvider>? logger = null)
         {
             _logger = logger ?? NullLogger<WindowsOcrProvider>.Instance;
 
-            var languageTag = string.IsNullOrWhiteSpace(settings?.Language) ? "ar" : settings!.Language;
-            try
+            var primary = string.IsNullOrWhiteSpace(settings?.Language) ? "ar" : settings!.Language;
+            var tags = new List<string> { primary };
+            if (settings?.AdditionalLanguages is { Count: > 0 } extra)
+                tags.AddRange(extra);
+
+            foreach (var tag in tags.Where(t => !string.IsNullOrWhiteSpace(t)).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                var language = new Language(languageTag);
-                if (OcrEngine.IsLanguageSupported(language))
-                {
-                    _engine = OcrEngine.TryCreateFromLanguage(language);
-                    LanguageTag = languageTag;
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "The '{Language}' OCR language pack is not installed; falling back to the user profile languages. "
-                        + "Install it with: Settings > Time & language > Language & region > Add a language.",
-                        languageTag);
-                    _engine = OcrEngine.TryCreateFromUserProfileLanguages();
-                    LanguageTag = _engine?.RecognizerLanguage?.LanguageTag ?? string.Empty;
-                }
+                var engine = TryCreateEngine(tag);
+                if (engine is not null)
+                    _engines.Add(engine);
             }
-            catch (Exception ex)
+
+            if (_engines.Count == 0)
             {
-                _logger.LogError(ex, "Windows OCR could not be initialised.");
-                _engine = null;
+                _logger.LogWarning(
+                    "None of the configured OCR language packs ({Languages}) is installed; falling back to the user "
+                    + "profile languages. Install one with: Settings > Time & language > Language & region > Add a language.",
+                    string.Join(", ", tags));
+
+                var fallback = OcrEngine.TryCreateFromUserProfileLanguages();
+                if (fallback is not null)
+                    _engines.Add(fallback);
             }
+
+            LanguageTag = string.Join(", ", _engines.Select(e => e.RecognizerLanguage?.LanguageTag).Where(t => t is not null));
         }
 
-        public bool IsAvailable => _engine is not null;
+        public bool IsAvailable => _engines.Count > 0;
 
-        /// <summary>Language actually used by the engine, empty when unavailable.</summary>
+        /// <summary>Languages actually used by the engines, empty when unavailable.</summary>
         public string LanguageTag { get; } = string.Empty;
 
         public async Task<List<OcrWord>> ExtractTextAsync(ScreenFrame frame, CancellationToken cancellationToken = default)
         {
             var words = new List<OcrWord>();
-            if (_engine is null || frame is null)
+            if (_engines.Count == 0 || frame is null)
                 return words;
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -68,24 +71,33 @@ namespace ScreenSpell.OCR
             try
             {
                 using var bitmap = ToSoftwareBitmap(frame);
-                var result = await _engine.RecognizeAsync(bitmap).AsTask(cancellationToken).ConfigureAwait(false);
+                // Every engine reads the whole frame, so the same word can come back twice.
+                var seen = new HashSet<string>(StringComparer.Ordinal);
 
-                foreach (var line in result.Lines)
+                foreach (var engine in _engines)
                 {
-                    foreach (var word in line.Words)
+                    var result = await engine.RecognizeAsync(bitmap).AsTask(cancellationToken).ConfigureAwait(false);
+
+                    foreach (var line in result.Lines)
                     {
-                        var rect = word.BoundingRect;
-                        words.Add(new OcrWord
+                        foreach (var word in line.Words)
                         {
-                            Text = word.Text,
-                            BoundingBox = new BoundingBox(
-                                rect.X + frame.OriginX,
-                                rect.Y + frame.OriginY,
-                                rect.Width,
-                                rect.Height),
-                            // Windows.Media.Ocr does not expose a per word score.
-                            Confidence = 1.0
-                        });
+                            var rect = word.BoundingRect;
+                            if (!seen.Add($"{word.Text}@{(int)rect.X},{(int)rect.Y}"))
+                                continue;
+
+                            words.Add(new OcrWord
+                            {
+                                Text = word.Text,
+                                BoundingBox = new BoundingBox(
+                                    rect.X + frame.OriginX,
+                                    rect.Y + frame.OriginY,
+                                    rect.Width,
+                                    rect.Height),
+                                // Windows.Media.Ocr does not expose a per word score.
+                                Confidence = 1.0
+                            });
+                        }
                     }
                 }
             }
@@ -99,6 +111,26 @@ namespace ScreenSpell.OCR
             }
 
             return words;
+        }
+
+        private OcrEngine? TryCreateEngine(string tag)
+        {
+            try
+            {
+                var language = new Language(tag);
+                if (!OcrEngine.IsLanguageSupported(language))
+                {
+                    _logger.LogWarning("The '{Language}' OCR language pack is not installed.", tag);
+                    return null;
+                }
+
+                return OcrEngine.TryCreateFromLanguage(language);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Could not create an OCR engine for '{Language}'.", tag);
+                return null;
+            }
         }
 
         private static SoftwareBitmap ToSoftwareBitmap(ScreenFrame frame)

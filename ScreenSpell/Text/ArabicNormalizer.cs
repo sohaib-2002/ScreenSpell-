@@ -13,7 +13,8 @@ namespace ScreenSpell.Text
 
         /// <summary>
         /// Strips diacritics and tatweel and unifies the letter shapes that OCR engines
-        /// tend to confuse, so a word can be compared against a dictionary entry.
+        /// tend to confuse, so a word can be compared against a dictionary entry. Latin
+        /// letters are lower cased for the same reason.
         /// </summary>
         public static string Normalize(string? text, bool convertTehMarbutaToHeh = false)
         {
@@ -59,7 +60,7 @@ namespace ScreenSpell.Text
                     case '٨': sb.Append('8'); break;
                     case '٩': sb.Append('9'); break;
                     default:
-                        sb.Append(c);
+                        sb.Append(char.IsAsciiLetterUpper(c) ? char.ToLowerInvariant(c) : c);
                         break;
                 }
             }
@@ -94,6 +95,53 @@ namespace ScreenSpell.Text
             }
 
             return letters > 0;
+        }
+
+        /// <summary>True when every letter of the token is Latin.</summary>
+        public static bool IsLatinWord(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            var letters = 0;
+            foreach (var c in text)
+            {
+                if (!char.IsLetter(c))
+                    continue;
+
+                letters++;
+                if (!char.IsAsciiLetter(c))
+                    return false;
+            }
+
+            return letters > 0;
+        }
+
+        /// <summary>
+        /// True for tokens worth spell checking: a single script, letters only. Mixed script
+        /// tokens ("كتابbook") and anything with digits are OCR artefacts or identifiers.
+        /// Acronyms ("HTTP") and camel case identifiers ("ScreenSpell") are skipped too, since
+        /// on a desktop they are almost always names rather than misspellings.
+        /// </summary>
+        public static bool IsCheckableWord(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text) || text.Any(char.IsDigit))
+                return false;
+
+            if (IsArabicWord(text))
+                return true;
+
+            return IsLatinWord(text) && !IsAcronymOrIdentifier(text);
+        }
+
+        private static bool IsAcronymOrIdentifier(string text)
+        {
+            var upper = text.Count(char.IsAsciiLetterUpper);
+            if (upper == 0)
+                return false;
+
+            // A single leading capital is just a sentence start or a proper noun we still check.
+            return upper > 1 || !char.IsAsciiLetterUpper(text[0]);
         }
     }
 }

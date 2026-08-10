@@ -25,7 +25,8 @@ namespace ScreenSpell.SpellCheck
 
         public SpellResult CheckWord(string word)
         {
-            var normalized = ArabicNormalizer.Normalize(ArabicNormalizer.TrimPunctuation(word));
+            var trimmed = ArabicNormalizer.TrimPunctuation(word);
+            var normalized = ArabicNormalizer.Normalize(trimmed);
             if (normalized.Length == 0)
                 return SpellResult.Correct(word ?? string.Empty);
 
@@ -35,7 +36,9 @@ namespace ScreenSpell.SpellCheck
             if (_cache.TryGetValue(normalized, out var cached) && cached is not null)
                 return cached;
 
-            var result = _engine.CheckWord(normalized);
+            // The engine gets the original casing so it can recognise acronyms; the cache is
+            // keyed on the normalized form so the ignore list can invalidate it.
+            var result = _engine.CheckWord(trimmed);
             _cache.AddOrUpdate(normalized, result);
             return result;
         }

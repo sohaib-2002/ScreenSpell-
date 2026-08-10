@@ -12,6 +12,7 @@ window where they can be ignored or added to your personal dictionary.
 - The **Arabic** OCR language pack:
   `Settings > Time & language > Language & region > Add a language > العربية`,
   and make sure *Optical character recognition* is ticked in the optional features.
+  Add **English** the same way if you also want English words checked.
   Without it the app starts but the status bar reports that OCR is unavailable.
 
 ## Build and run
@@ -66,7 +67,9 @@ Settings live in `%LOCALAPPDATA%\ScreenSpell\settings.json` and are written when
 {
   "ScanIntervalMs": 1500,        // delay between scans
   "MinOcrConfidence": 0.5,       // 0..1, OCR words below this are ignored
-  "Language": "ar",              // OCR language tag
+  "Language": "ar",              // primary OCR language tag
+  "AdditionalLanguages": ["en"], // extra OCR languages, if their packs are installed
+  "StabilityFrames": 2,          // scans a word must stay wrong before it is underlined (1 = off)
   "MaxSuggestions": 5,
   "MinWordLength": 3,            // shorter tokens are treated as noise
   "ShowOverlay": true,
@@ -82,9 +85,16 @@ Settings live in `%LOCALAPPDATA%\ScreenSpell\settings.json` and are written when
 ## Dictionaries
 
 The spell checker is word-list based and ships with the LibreOffice/ayaspell Arabic word list
-(`SpellCheck/Dictionaries/ar.dic`, ~274k normalized entries) plus a small seed list of
-app-specific terms. Both are copied next to the executable at build time, so no extra
-download is needed.
+(`SpellCheck/Dictionaries/ar.dic`, ~274k entries) and an English word list
+(`SpellCheck/Dictionaries/en.txt`, ~370k entries) plus a small seed list of app-specific
+terms. All of them are copied next to the executable at build time, so no extra download is
+needed.
+
+Both Arabic and English words are checked. Acronyms (`HTTP`), camel case identifiers
+(`ScreenSpell`), tokens containing digits and mixed-script OCR artefacts are skipped, since on
+a desktop they are names rather than misspellings. English words are only read from the screen
+when the English OCR pack is installed; otherwise a warning is logged at startup and only
+Arabic is recognised.
 
 To add more word lists (another language, domain vocabulary), drop them into either
 

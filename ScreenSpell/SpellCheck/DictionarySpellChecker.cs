@@ -40,7 +40,9 @@ namespace ScreenSpell.SpellCheck
             var trimmed = ArabicNormalizer.TrimPunctuation(word);
             var normalized = ArabicNormalizer.Normalize(trimmed);
 
-            if (normalized.Length == 0 || !ArabicNormalizer.IsArabicWord(normalized))
+            // The original casing matters here: normalization lower cases Latin text, which
+            // would hide acronyms and camel case identifiers.
+            if (normalized.Length == 0 || !ArabicNormalizer.IsCheckableWord(trimmed))
                 return SpellResult.Correct(word ?? string.Empty);
 
             // Very short tokens are almost always OCR noise or particles.

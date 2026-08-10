@@ -74,8 +74,9 @@ namespace ScreenSpell.SpellCheck
                 return _fallback.CheckWord(word);
 
             var normalized = ArabicNormalizer.Normalize(ArabicNormalizer.TrimPunctuation(word));
-            if (normalized.Length == 0 || !ArabicNormalizer.IsArabicWord(normalized))
-                return SpellResult.Correct(word ?? string.Empty);
+            // The model only knows Arabic; anything else is the dictionary's business.
+            if (!ArabicNormalizer.IsArabicWord(normalized))
+                return _fallback.CheckWord(word);
 
             try
             {

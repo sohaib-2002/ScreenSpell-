@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using ScreenSpell.Cache;
 using ScreenSpell.Core.Interfaces;
 using ScreenSpell.Core.Models;
+using ScreenSpell.Core.Services;
 using ScreenSpell.Text;
 
 namespace ScreenSpell.Main
@@ -19,9 +20,11 @@ namespace ScreenSpell.Main
         private readonly OcrCache _ocrCache;
         private readonly ISettingsService _settings;
         private readonly ILogger<ScanService> _logger;
+        private readonly IssueStabilizer _stabilizer = new();
 
         private CancellationTokenSource? _cancellation;
         private Task? _loop;
+        private string _lastRendered = string.Empty;
 
         public ScanService(
             IScreenCaptureService capture,
@@ -58,6 +61,7 @@ namespace ScreenSpell.Main
                 return;
             }
 
+            _stabilizer.Reset();
             _cancellation = new CancellationTokenSource();
             _loop = Task.Run(() => RunAsync(_cancellation.Token));
             Report("جارٍ التدقيق…");
@@ -66,6 +70,8 @@ namespace ScreenSpell.Main
         public void Stop()
         {
             _cancellation?.Cancel();
+            _stabilizer.Reset();
+            _lastRendered = string.Empty;
             _overlay.Clear();
             Report("متوقف");
         }
@@ -74,7 +80,7 @@ namespace ScreenSpell.Main
         public async Task ScanOnceAsync(CancellationToken cancellationToken = default)
         {
             _ocrCache.Invalidate();
-            await ScanAsync(cancellationToken).ConfigureAwait(false);
+            await ScanAsync(cancellationToken, stabilize: false).ConfigureAwait(false);
         }
 
         public void Dispose()
@@ -113,21 +119,21 @@ namespace ScreenSpell.Main
             }
         }
 
-        private async Task ScanAsync(CancellationToken cancellationToken)
+        private async Task ScanAsync(CancellationToken cancellationToken, bool stabilize = true)
         {
             var settings = _settings.Settings;
             var frame = _capture.CaptureScreen();
 
             if (_ocrCache.TryGetCachedFrame(frame, out var cachedWords))
             {
-                Publish(BuildIssues(cachedWords, settings));
+                Publish(BuildIssues(cachedWords, settings), stabilize);
                 return;
             }
 
             var words = await _ocr.ExtractTextAsync(frame, cancellationToken).ConfigureAwait(false);
             _ocrCache.UpdateCache(words);
 
-            Publish(BuildIssues(words, settings));
+            Publish(BuildIssues(words, settings), stabilize);
         }
 
         private List<SpellIssue> BuildIssues(IEnumerable<OcrWord> words, AppSettings settings)
@@ -140,7 +146,7 @@ namespace ScreenSpell.Main
                     continue;
 
                 var text = ArabicNormalizer.TrimPunctuation(word.Text);
-                if (text.Length < settings.MinWordLength || !ArabicNormalizer.IsArabicWord(text))
+                if (text.Length < settings.MinWordLength || !ArabicNormalizer.IsCheckableWord(text))
                     continue;
 
                 var result = _spellChecker.CheckWord(text);
@@ -159,16 +165,37 @@ namespace ScreenSpell.Main
             return issues;
         }
 
-        private void Publish(IReadOnlyList<SpellIssue> issues)
+        private void Publish(IReadOnlyList<SpellIssue> raw, bool stabilize)
         {
-            if (_settings.Settings.ShowOverlay)
-                _overlay.Render(issues);
-            else
+            // A one-off scan has no history to smooth against, so it shows what it found.
+            var issues = stabilize
+                ? _stabilizer.Stabilize(raw, _settings.Settings.StabilityFrames)
+                : raw;
+
+            if (!_settings.Settings.ShowOverlay)
+            {
+                _lastRendered = string.Empty;
                 _overlay.Clear();
+            }
+            else
+            {
+                // Re-drawing an identical set is what makes the squiggles blink.
+                var fingerprint = Fingerprint(issues);
+                if (fingerprint != _lastRendered)
+                {
+                    _overlay.Render(issues);
+                    _lastRendered = fingerprint;
+                }
+            }
 
             IssuesUpdated?.Invoke(this, issues);
             Report($"تم العثور على {issues.Count} كلمة مشكوك بها");
         }
+
+        private static string Fingerprint(IReadOnlyList<SpellIssue> issues) =>
+            string.Join(
+                "|",
+                issues.Select(i => $"{i.Word}:{(int)i.BoundingBox.X},{(int)i.BoundingBox.Y},{(int)i.BoundingBox.Width}"));
 
         private void Report(string status) => StatusChanged?.Invoke(this, status);
     }

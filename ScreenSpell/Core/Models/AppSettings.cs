@@ -11,6 +11,20 @@ namespace ScreenSpell.Core.Models
         /// <summary>BCP-47 language tag handed to the OCR engine.</summary>
         public string Language { get; set; } = "ar";
 
+        /// <summary>
+        /// Extra BCP-47 tags recognised alongside <see cref="Language"/>. One OCR engine is
+        /// created per installed tag and their results are merged, which is what makes Latin
+        /// text on an Arabic screen readable.
+        /// </summary>
+        public List<string> AdditionalLanguages { get; set; } = new() { "en" };
+
+        /// <summary>
+        /// Number of consecutive scans a word must stay misspelled before it is underlined,
+        /// and how many scans an underline survives after the word disappears. Raising it
+        /// steadies the overlay when OCR results flicker; 1 disables the smoothing.
+        /// </summary>
+        public int StabilityFrames { get; set; } = 2;
+
         /// <summary>Maximum number of suggestions shown for a misspelled word.</summary>
         public int MaxSuggestions { get; set; } = 5;
 
@@ -43,6 +57,8 @@ namespace ScreenSpell.Core.Models
             ScanIntervalMs = ScanIntervalMs,
             MinOcrConfidence = MinOcrConfidence,
             Language = Language,
+            AdditionalLanguages = new List<string>(AdditionalLanguages),
+            StabilityFrames = StabilityFrames,
             MaxSuggestions = MaxSuggestions,
             MinWordLength = MinWordLength,
             ShowOverlay = ShowOverlay,

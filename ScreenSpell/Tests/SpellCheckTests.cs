@@ -1,5 +1,6 @@
 using ScreenSpell.Cache;
 using ScreenSpell.Core.Models;
+using ScreenSpell.Core.Services;
 using ScreenSpell.Settings;
 using ScreenSpell.SpellCheck;
 using ScreenSpell.Text;
@@ -28,6 +29,69 @@ namespace ScreenSpell.Tests
             Assert.True(ArabicNormalizer.IsArabicWord("كتاب"));
             Assert.False(ArabicNormalizer.IsArabicWord("book"));
             Assert.False(ArabicNormalizer.IsArabicWord("كتابbook"));
+        }
+
+        [Theory]
+        [InlineData("كتاب", true)]
+        [InlineData("book", true)]
+        [InlineData("Book", true)]
+        [InlineData("HTTP", false)]
+        [InlineData("ScreenSpell", false)]
+        [InlineData("كتابbook", false)]
+        [InlineData("win32", false)]
+        public void IsCheckableWordKeepsSingleScriptWordsOnly(string input, bool expected) =>
+            Assert.Equal(expected, ArabicNormalizer.IsCheckableWord(input));
+
+        [Fact]
+        public void NormalizeLowerCasesLatinLettersSoLookupsAreCaseInsensitive() =>
+            Assert.Equal("book", ArabicNormalizer.Normalize("Book"));
+    }
+
+    public class IssueStabilizerTests
+    {
+        private static SpellIssue Issue(string word, double x = 10, double y = 20) => new()
+        {
+            Word = word,
+            BoundingBox = new BoundingBox(x, y, 40, 12),
+            Suggestions = new List<string>()
+        };
+
+        [Fact]
+        public void IssueIsHiddenUntilItIsSeenTwice()
+        {
+            var stabilizer = new IssueStabilizer();
+            var issues = new[] { Issue("مدرصة") };
+
+            Assert.Empty(stabilizer.Stabilize(issues, 2));
+            Assert.Single(stabilizer.Stabilize(issues, 2));
+        }
+
+        [Fact]
+        public void IssueSurvivesASingleMissingPass()
+        {
+            var stabilizer = new IssueStabilizer();
+            var issues = new[] { Issue("مدرصة") };
+            stabilizer.Stabilize(issues, 2);
+            stabilizer.Stabilize(issues, 2);
+
+            Assert.Single(stabilizer.Stabilize(Array.Empty<SpellIssue>(), 2));
+            Assert.Empty(stabilizer.Stabilize(Array.Empty<SpellIssue>(), 2));
+        }
+
+        [Fact]
+        public void SmallBoxJitterIsTreatedAsTheSameIssue()
+        {
+            var stabilizer = new IssueStabilizer();
+            stabilizer.Stabilize(new[] { Issue("مدرصة", x: 10) }, 2);
+
+            Assert.Single(stabilizer.Stabilize(new[] { Issue("مدرصة", x: 12) }, 2));
+        }
+
+        [Fact]
+        public void SmoothingIsOffWhenOneFrameIsRequested()
+        {
+            var stabilizer = new IssueStabilizer();
+            Assert.Single(stabilizer.Stabilize(new[] { Issue("مدرصة") }, 1));
         }
     }
 
@@ -105,8 +169,23 @@ namespace ScreenSpell.Tests
         }
 
         [Fact]
-        public void NonArabicTokensAreLeftAlone() =>
-            Assert.False(Build("مدرسة").CheckWord("Windows").IsError);
+        public void EnglishWordsAreCheckedAgainstTheSameWordList()
+        {
+            var checker = Build("مدرسة", "receive");
+
+            Assert.False(checker.CheckWord("Receive").IsError);
+            Assert.True(checker.CheckWord("recieve").IsError);
+        }
+
+        [Fact]
+        public void AcronymsAndMixedScriptTokensAreLeftAlone()
+        {
+            var checker = Build("مدرسة");
+
+            Assert.False(checker.CheckWord("HTTP").IsError);
+            Assert.False(checker.CheckWord("ScreenSpell").IsError);
+            Assert.False(checker.CheckWord("كتابbook").IsError);
+        }
 
         [Fact]
         public void AddToDictionaryClearsThePreviousVerdict()
