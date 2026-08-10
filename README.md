@@ -1,19 +1,40 @@
 # ScreenSpell — التدقيق الإملائي العربي على الشاشة
 
-ScreenSpell watches your Windows desktop, reads the Arabic text on screen with the built-in
-Windows OCR engine, spell checks every word and draws a red squiggle under the suspicious
-ones through a transparent, click-through overlay. Found words are also listed in the main
-window where they can be ignored or added to your personal dictionary.
+ScreenSpell watches your Windows desktop, reads the Arabic text on screen, spell checks every
+word and draws a red squiggle under the suspicious ones through a transparent, click-through
+overlay. Found words are also listed in the main window where they can be ignored or added to
+your personal dictionary.
 
 ## Requirements
 
 - Windows 10 version 2004 (build 19041) or newer / Windows 11
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (SDK to build, runtime to run)
-- The **Arabic** OCR language pack:
+- The **Arabic** OCR language pack, for the default Windows engine only:
   `Settings > Time & language > Language & region > Add a language > العربية`,
   and make sure *Optical character recognition* is ticked in the optional features.
   Add **English** the same way if you also want English words checked.
   Without it the app starts but the status bar reports that OCR is unavailable.
+  The Tesseract and PaddleOCR engines below need no language pack at all.
+
+## OCR engines
+
+Pick one under **محرك القراءة** in the settings panel; the choice is applied when the app is
+restarted, and the status bar names the engine actually in use. Everything is offline, and
+the models ship inside the repository (`ScreenSpell/Engines/Models`, ~18 MB in total), so
+there is nothing to download.
+
+| Engine | Setting value | Models | Notes |
+| --- | --- | --- | --- |
+| Windows OCR (default) | `Windows` | none | fastest, needs the language packs, no real per-word confidence and it misreads small text |
+| Tesseract 5 | `Tesseract` | `tessdata/ara.traineddata`, `tessdata/eng.traineddata` (5.5 MB) | no language pack needed, real confidence, slower |
+| PaddleOCR | `Paddle` | `paddle_det.onnx` (4.7 MB), `paddle_rec_arabic.onnx` (8 MB), `paddle_rec_arabic_dict.txt` | most accurate on Arabic, reads Latin in the same pass, heaviest on the CPU |
+
+The two offline engines read the enlarged frame like the Windows one does, and they only run
+once the picture has settled, so the cost is paid per screen change and not per refresh. When
+the selected engine cannot load its models the app logs a warning and falls back to Windows OCR.
+
+The bundled files are the upstream releases: `tessdata_fast` for Tesseract (Apache 2.0) and the
+PP-OCRv4 detector plus the PP-OCRv5 Arabic mobile recogniser exported to ONNX (Apache 2.0).
 
 ## Build and run
 
@@ -60,6 +81,7 @@ cannot be executed there.
 | عدد الاقتراحات | how many corrections are listed per word |
 | تكبير الصورة قبل القراءة | upscale applied before OCR, 1 to 4 (needs a restart) |
 | لغة القراءة / لغات إضافية | OCR language tags, comma separated (needs a restart) |
+| محرك القراءة | Windows OCR, Tesseract 5 or PaddleOCR (needs a restart) |
 | بدء التدقيق عند فتح التطبيق | starts the loop automatically |
 | الإخفاء إلى شريط المهام عند الإغلاق | keeps the app running in the tray |
 | استعادة الافتراضي | puts every setting above back to its default |
@@ -84,6 +106,7 @@ Settings live in `%LOCALAPPDATA%\ScreenSpell\settings.json` and are written when
   "ScanActiveWindowOnly": true,  // scan the foreground window instead of the whole screen
   "MinTextHeight": 9,            // words drawn smaller than this many pixels are ignored
   "EnhanceContrast": true,       // grey scale + contrast stretch before recognition
+  "OcrEngine": "Windows",        // Windows | Tesseract | Paddle (applied at startup)
   "OcrScale": 2.0,               // frame is enlarged this much before OCR (1 = off, applied at startup)
   "Language": "ar",              // primary OCR language tag
   "AdditionalLanguages": ["en"], // extra OCR languages, if their packs are installed
@@ -144,6 +167,7 @@ supported path.
 | `Settings` | net8.0 | JSON settings persistence |
 | `Capture` | net8.0-windows | GDI screen capture into a `ScreenFrame` |
 | `OCR` | net8.0-windows10.0.19041.0 | `Windows.Media.Ocr` provider |
+| `Engines` | net8.0 | Tesseract 5 and PaddleOCR providers with their bundled models |
 | `Overlay` | net8.0-windows | transparent click-through squiggle overlay |
 | `Tray` | net8.0-windows | notification area icon and menu |
 | `Main` | net8.0-windows10.0.19041.0 | WPF shell, DI host, scan loop |

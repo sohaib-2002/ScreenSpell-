@@ -6,3 +6,4 @@ obj/
 TestResults/
 Logs/
 *.onnx
+!ScreenSpell/Engines/Models/*.onnx

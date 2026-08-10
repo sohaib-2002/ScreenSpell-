@@ -16,7 +16,9 @@ namespace ScreenSpell.Settings
         private static readonly JsonSerializerOptions SerializerOptions = new()
         {
             WriteIndented = true,
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            // Engine names read as "Windows" / "Tesseract" / "Paddle" rather than 0 / 1 / 2.
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
         };
 
         private readonly ILogger<ConfigurationManager> _logger;

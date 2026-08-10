@@ -11,6 +11,10 @@
     <ProjectReference Include="..\Cache\ScreenSpell.Cache.csproj" />
     <ProjectReference Include="..\SpellCheck\ScreenSpell.SpellCheck.csproj" />
     <ProjectReference Include="..\Settings\ScreenSpell.Settings.csproj" />
+    <ProjectReference Include="..\Engines\ScreenSpell.Engines.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />

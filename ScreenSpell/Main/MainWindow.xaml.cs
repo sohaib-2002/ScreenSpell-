@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using ScreenSpell.Core.Interfaces;
 using ScreenSpell.Core.Models;
+using ScreenSpell.Engines;
 using ScreenSpell.SpellCheck;
 
 namespace ScreenSpell.Main
@@ -33,12 +34,38 @@ namespace ScreenSpell.Main
             LoadSettingsIntoUi();
 
             EngineText.Text = _ocr.IsAvailable
-                ? "محرك التعرف الضوئي: Windows OCR"
+                ? $"محرك التعرف الضوئي: {DescribeEngine(_ocr)}"
                 : "محرك التعرف الضوئي غير متاح - ثبّت حزمة اللغة العربية (الإعدادات > الوقت واللغة)";
 
             if (_settings.Settings.StartScanningOnLaunch)
                 StartScanning();
         }
+
+        /// <summary>The engine actually in use, which is not the requested one after a fallback.</summary>
+        private static string DescribeEngine(IOcrProvider provider) => provider switch
+        {
+            TesseractOcrProvider => "Tesseract 5",
+            PaddleOcrProvider => "PaddleOCR",
+            _ => "Windows OCR"
+        };
+
+        private void SelectEngine(OcrEngineKind engine)
+        {
+            foreach (ComboBoxItem item in OcrEngineBox.Items)
+            {
+                if (Enum.TryParse<OcrEngineKind>(item.Tag as string, out var kind) && kind == engine)
+                {
+                    OcrEngineBox.SelectedItem = item;
+                    return;
+                }
+            }
+        }
+
+        private OcrEngineKind SelectedEngine() =>
+            OcrEngineBox.SelectedItem is ComboBoxItem item &&
+            Enum.TryParse<OcrEngineKind>(item.Tag as string, out var kind)
+                ? kind
+                : OcrEngineKind.Windows;
 
         private void OnIssuesUpdated(object? sender, IReadOnlyList<SpellIssue> issues) =>
             Dispatcher.Invoke(() => IssuesList.ItemsSource = issues);
@@ -61,6 +88,7 @@ namespace ScreenSpell.Main
             ActiveWindowCheckBox.IsChecked = settings.ScanActiveWindowOnly;
             RefreshSyncCheckBox.IsChecked = settings.SyncToRefreshRate;
             EnhanceCheckBox.IsChecked = settings.EnhanceContrast;
+            SelectEngine(settings.OcrEngine);
             StartOnLaunchCheckBox.IsChecked = settings.StartScanningOnLaunch;
             TrayCheckBox.IsChecked = settings.MinimizeToTray;
         }
@@ -154,13 +182,18 @@ namespace ScreenSpell.Main
                 settings.ScanActiveWindowOnly = ActiveWindowCheckBox.IsChecked == true;
                 settings.SyncToRefreshRate = RefreshSyncCheckBox.IsChecked == true;
                 settings.EnhanceContrast = EnhanceCheckBox.IsChecked == true;
+
+                var engine = SelectedEngine();
+                needsRestart |= engine != settings.OcrEngine;
+                settings.OcrEngine = engine;
+
                 settings.StartScanningOnLaunch = StartOnLaunchCheckBox.IsChecked == true;
                 settings.MinimizeToTray = TrayCheckBox.IsChecked == true;
             });
 
             LoadSettingsIntoUi();
             StatusText.Text = needsRestart
-                ? "تم حفظ الإعدادات - أعد تشغيل التطبيق لتطبيق التكبير واللغات"
+                ? "تم حفظ الإعدادات - أعد تشغيل التطبيق لتطبيق محرك القراءة والتكبير واللغات"
                 : "تم حفظ الإعدادات";
         }
 
@@ -174,6 +207,7 @@ namespace ScreenSpell.Main
                 settings.MinTextHeight = defaults.MinTextHeight;
                 settings.SyncToRefreshRate = defaults.SyncToRefreshRate;
                 settings.EnhanceContrast = defaults.EnhanceContrast;
+                settings.OcrEngine = defaults.OcrEngine;
                 settings.StabilityFrames = defaults.StabilityFrames;
                 settings.MinWordLength = defaults.MinWordLength;
                 settings.MaxSuggestions = defaults.MaxSuggestions;

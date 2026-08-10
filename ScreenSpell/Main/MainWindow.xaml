@@ -37,6 +37,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="الفاصل الزمني (ملّي ثانية):" VerticalAlignment="Center" Margin="0,4" />
@@ -71,7 +72,15 @@
                 <TextBox x:Name="AdditionalLanguagesBox" Grid.Row="2" Grid.Column="4" Grid.ColumnSpan="4" Margin="4"
                          ToolTip="رموز لغات إضافية مفصولة بفاصلة، مثل en. يجب أن تكون حزمة اللغة مثبّتة. يتطلب إعادة تشغيل التطبيق." />
 
-                <WrapPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="8" Orientation="Horizontal" Margin="0,8,0,0">
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="محرك القراءة:" VerticalAlignment="Center" Margin="0,4" />
+                <ComboBox x:Name="OcrEngineBox" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="4" Margin="4" HorizontalAlignment="Left" MinWidth="220"
+                          ToolTip="Windows OCR سريع ويحتاج حزمة اللغة، وTesseract وPaddleOCR يعملان بنماذج مضمّنة بلا حزم لغة. يتطلب إعادة تشغيل التطبيق.">
+                    <ComboBoxItem Content="Windows OCR (الأسرع)" Tag="Windows" />
+                    <ComboBoxItem Content="Tesseract 5 (نماذج مضمّنة)" Tag="Tesseract" />
+                    <ComboBoxItem Content="PaddleOCR (الأدق للعربية)" Tag="Paddle" />
+                </ComboBox>
+
+                <WrapPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="8" Orientation="Horizontal" Margin="0,8,0,0">
                     <CheckBox x:Name="RefreshSyncCheckBox" Content="المزامنة مع معدل تحديث الشاشة" VerticalAlignment="Center" Margin="0,0,16,0"
                               ToolTip="يُراقب المحتوى بمعدل تحديث الشاشة ويُشغّل القراءة فور استقرار الصورة بدل الانتظار زمنًا ثابتًا." />
                     <CheckBox x:Name="EnhanceCheckBox" Content="تحسين الصورة قبل القراءة" VerticalAlignment="Center" Margin="0,0,16,0"

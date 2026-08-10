@@ -7,6 +7,7 @@ using ScreenSpell.Cache;
 using ScreenSpell.Capture;
 using ScreenSpell.Core.Interfaces;
 using ScreenSpell.Core.Models;
+using ScreenSpell.Engines;
 using ScreenSpell.OCR;
 using ScreenSpell.Overlay;
 using ScreenSpell.Settings;
@@ -60,7 +61,7 @@ namespace ScreenSpell.Main
                         sp.GetRequiredService<SpellCache>()));
                     services.AddSingleton<ISpellChecker>(sp => sp.GetRequiredService<SpellCheckerService>());
 
-                    services.AddSingleton<IOcrProvider, WindowsOcrProvider>();
+                    services.AddSingleton<IOcrProvider>(BuildOcrProvider);
                     services.AddSingleton<IScreenCaptureService, GraphicsCaptureService>();
                     services.AddSingleton<IOverlayService>(_ => new OverlayService(Current.Dispatcher));
                     services.AddSingleton<SpellCache>();
@@ -126,6 +127,36 @@ namespace ScreenSpell.Main
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ScreenSpell",
             "Logs");
+
+        /// <summary>
+        /// Builds the reader the settings ask for. The offline engines carry their own models,
+        /// so when one of them cannot start (missing files, unsupported CPU) the Windows engine
+        /// takes over instead of leaving the app with no reader at all.
+        /// </summary>
+        private static IOcrProvider BuildOcrProvider(IServiceProvider services)
+        {
+            var settings = services.GetRequiredService<ISettingsService>().Settings;
+            var loggers = services.GetRequiredService<ILoggerFactory>();
+
+            IOcrProvider? provider = settings.OcrEngine switch
+            {
+                OcrEngineKind.Tesseract => new TesseractOcrProvider(settings, loggers.CreateLogger<TesseractOcrProvider>()),
+                OcrEngineKind.Paddle => new PaddleOcrProvider(settings, loggers.CreateLogger<PaddleOcrProvider>()),
+                _ => null
+            };
+
+            if (provider is { IsAvailable: true })
+                return provider;
+
+            if (provider is not null)
+            {
+                (provider as IDisposable)?.Dispose();
+                loggers.CreateLogger<App>().LogWarning(
+                    "The {Engine} engine could not start; falling back to Windows OCR.", settings.OcrEngine);
+            }
+
+            return new WindowsOcrProvider(settings, loggers.CreateLogger<WindowsOcrProvider>());
+        }
 
         /// <summary>
         /// Loads the built-in seed list plus anything the user dropped into the dictionary

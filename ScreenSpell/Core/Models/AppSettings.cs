@@ -29,6 +29,9 @@ namespace ScreenSpell.Core.Models
         /// <summary>Convert to grey and stretch the contrast before recognition.</summary>
         public bool EnhanceContrast { get; set; } = true;
 
+        /// <summary>Which engine reads the screen; see <see cref="OcrEngineKind"/>.</summary>
+        public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.Windows;
+
         /// <summary>
         /// The frame is enlarged by this factor before recognition. Screen text is small and
         /// the Windows engine misreads letters at native resolution (التوقيع read as التوميع);
@@ -87,6 +90,7 @@ namespace ScreenSpell.Core.Models
             ScanActiveWindowOnly = ScanActiveWindowOnly,
             MinTextHeight = MinTextHeight,
             EnhanceContrast = EnhanceContrast,
+            OcrEngine = OcrEngine,
             OcrScale = OcrScale,
             Language = Language,
             AdditionalLanguages = new List<string>(AdditionalLanguages),
