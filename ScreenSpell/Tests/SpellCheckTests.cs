@@ -34,11 +34,15 @@ namespace ScreenSpell.Tests
         [Theory]
         [InlineData("كتاب", true)]
         [InlineData("book", true)]
-        [InlineData("Book", true)]
+        [InlineData("Book", false)]
         [InlineData("HTTP", false)]
         [InlineData("ScreenSpell", false)]
         [InlineData("كتابbook", false)]
         [InlineData("win32", false)]
+        [InlineData("https://vwm.facebookcom", false)]
+        [InlineData("facebook.com", false)]
+        [InlineData("name@host", false)]
+        [InlineData(@"C:\Users", false)]
         public void IsCheckableWordKeepsSingleScriptWordsOnly(string input, bool expected) =>
             Assert.Equal(expected, ArabicNormalizer.IsCheckableWord(input));
 

@@ -10,6 +10,7 @@ namespace ScreenSpell.Text
         private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
         private static readonly Regex ArabicLetterRegex = new(@"[\u0621-\u064A\u0671-\u06D3]", RegexOptions.Compiled);
         private static readonly Regex TrimmableRegex = new(@"^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$", RegexOptions.Compiled);
+        private static readonly Regex AddressRegex = new(@"[/\\@:]|\p{L}\.\p{L}", RegexOptions.Compiled);
 
         /// <summary>
         /// Strips diacritics and tatweel and unifies the letter shapes that OCR engines
@@ -120,28 +121,22 @@ namespace ScreenSpell.Text
         /// <summary>
         /// True for tokens worth spell checking: a single script, letters only. Mixed script
         /// tokens ("كتابbook") and anything with digits are OCR artefacts or identifiers.
-        /// Acronyms ("HTTP") and camel case identifiers ("ScreenSpell") are skipped too, since
-        /// on a desktop they are almost always names rather than misspellings.
+        /// Addresses ("https://example.com", "name@host"), acronyms ("HTTP") and capitalised
+        /// words ("Faouzia", "Google") are skipped too, since on a desktop they are almost
+        /// always names rather than misspellings.
         /// </summary>
         public static bool IsCheckableWord(string? text)
         {
-            if (string.IsNullOrWhiteSpace(text) || text.Any(char.IsDigit))
+            if (string.IsNullOrWhiteSpace(text) || text.Any(char.IsDigit) || IsAddress(text))
                 return false;
 
             if (IsArabicWord(text))
                 return true;
 
-            return IsLatinWord(text) && !IsAcronymOrIdentifier(text);
+            return IsLatinWord(text) && !char.IsAsciiLetterUpper(text[0]);
         }
 
-        private static bool IsAcronymOrIdentifier(string text)
-        {
-            var upper = text.Count(char.IsAsciiLetterUpper);
-            if (upper == 0)
-                return false;
-
-            // A single leading capital is just a sentence start or a proper noun we still check.
-            return upper > 1 || !char.IsAsciiLetterUpper(text[0]);
-        }
+        /// <summary>True for links, mail addresses and file paths.</summary>
+        public static bool IsAddress(string text) => AddressRegex.IsMatch(text);
     }
 }

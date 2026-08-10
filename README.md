@@ -108,9 +108,10 @@ The spell checker is word-list based and ships with the LibreOffice/ayaspell Ara
 terms. All of them are copied next to the executable at build time, so no extra download is
 needed.
 
-Both Arabic and English words are checked. Acronyms (`HTTP`), camel case identifiers
-(`ScreenSpell`), tokens containing digits and mixed-script OCR artefacts are skipped, since on
-a desktop they are names rather than misspellings. English words are only read from the screen
+Both Arabic and English words are checked. Capitalised Latin words (`Google`, `Faouzia`),
+links, mail addresses and paths (`https://example.com`, `name@host`, `C:\Users`), tokens
+containing digits and mixed-script OCR artefacts are skipped, since on a desktop they are
+names rather than misspellings. English words are only read from the screen
 when the English OCR pack is installed; otherwise a warning is logged at startup and only
 Arabic is recognised.
 
