@@ -16,6 +16,15 @@ namespace ScreenSpell.Cache
         private string _lastFrameHash = string.Empty;
         private List<OcrWord> _lastWords = new();
 
+        /// <summary>
+        /// Fingerprint of a frame, cheap enough to run at the refresh rate of the display.
+        /// </summary>
+        public static string FingerprintOf(ScreenFrame frame)
+        {
+            ArgumentNullException.ThrowIfNull(frame);
+            return ComputeHash(frame);
+        }
+
         public bool TryGetCachedFrame(ScreenFrame? frame, out List<OcrWord> cachedWords)
         {
             if (frame is null)
@@ -24,7 +33,12 @@ namespace ScreenSpell.Cache
                 return false;
             }
 
-            var hash = ComputeHash(frame);
+            return TryGetCachedFrame(ComputeHash(frame), out cachedWords);
+        }
+
+        /// <summary>Same as <see cref="TryGetCachedFrame(ScreenFrame,out List{OcrWord})"/> for an already computed fingerprint.</summary>
+        public bool TryGetCachedFrame(string hash, out List<OcrWord> cachedWords)
+        {
             lock (_gate)
             {
                 if (hash.Length > 0 && hash == _lastFrameHash)

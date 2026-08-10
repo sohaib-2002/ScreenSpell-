@@ -4,6 +4,9 @@ namespace ScreenSpell.Core.Interfaces
 {
     public interface IScreenCaptureService
     {
+        /// <summary>Refresh rate of the display, in hertz; the natural pace for watching it.</summary>
+        int RefreshRateHz { get; }
+
         /// <summary>Grabs the primary screen as a BGRA frame.</summary>
         ScreenFrame CaptureScreen();
 

@@ -49,8 +49,10 @@ cannot be executed there.
 | --- | --- |
 | بدء التدقيق / إيقاف | starts and stops the periodic scan loop |
 | فحص الآن | forces a single scan, ignoring the unchanged-screen cache |
-| الفاصل الزمني | milliseconds between two scans (minimum 200) |
-| أقل ثقة | OCR words below this confidence are skipped |
+| الفاصل الزمني | milliseconds between two probes, used only when the refresh sync is off |
+| أقل ارتفاع للنص | words drawn smaller than this many pixels are skipped (0 = no limit) |
+| المزامنة مع معدل تحديث الشاشة | probes the screen every refresh and recognises as soon as it settles |
+| تحسين الصورة قبل القراءة | grey scale and contrast stretch, fewer misread letters |
 | إظهار الطبقة فوق الشاشة | toggles the on-screen squiggles |
 | النافذة النشطة فقط | scans only the window in front, which is much faster |
 | إطارات التثبيت | consecutive scans before a word is underlined (1 disables the smoothing) |
@@ -77,9 +79,11 @@ Settings live in `%LOCALAPPDATA%\ScreenSpell\settings.json` and are written when
 
 ```jsonc
 {
-  "ScanIntervalMs": 800,         // delay between scans
+  "SyncToRefreshRate": true,     // watch the screen at its refresh rate, OCR once it settles
+  "ScanIntervalMs": 800,         // fallback delay, used only when the sync above is off
   "ScanActiveWindowOnly": true,  // scan the foreground window instead of the whole screen
-  "MinOcrConfidence": 0.5,       // 0..1, OCR words below this are ignored
+  "MinTextHeight": 9,            // words drawn smaller than this many pixels are ignored
+  "EnhanceContrast": true,       // grey scale + contrast stretch before recognition
   "OcrScale": 2.0,               // frame is enlarged this much before OCR (1 = off, applied at startup)
   "Language": "ar",              // primary OCR language tag
   "AdditionalLanguages": ["en"], // extra OCR languages, if their packs are installed

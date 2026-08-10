@@ -2,7 +2,14 @@ namespace ScreenSpell.Core.Models
 {
     public class AppSettings
     {
-        /// <summary>Delay between two screen scans, in milliseconds.</summary>
+        /// <summary>
+        /// Watch the screen at its own refresh rate instead of on a fixed timer: the frame is
+        /// probed every refresh and recognition runs as soon as the picture stops changing,
+        /// which is what makes underlines appear right after a page or a window is drawn.
+        /// </summary>
+        public bool SyncToRefreshRate { get; set; } = true;
+
+        /// <summary>Delay between two screen probes when <see cref="SyncToRefreshRate"/> is off.</summary>
         public int ScanIntervalMs { get; set; } = 800;
 
         /// <summary>
@@ -12,8 +19,15 @@ namespace ScreenSpell.Core.Models
         /// </summary>
         public bool ScanActiveWindowOnly { get; set; } = true;
 
-        /// <summary>OCR words below this confidence are ignored.</summary>
-        public double MinOcrConfidence { get; set; } = 0.5;
+        /// <summary>
+        /// Recognised words shorter than this many screen pixels are ignored. Tiny glyphs are
+        /// where OCR invents letters, and this is a real measurement, unlike the per word
+        /// confidence the Windows engine does not report.
+        /// </summary>
+        public double MinTextHeight { get; set; } = 9;
+
+        /// <summary>Convert to grey and stretch the contrast before recognition.</summary>
+        public bool EnhanceContrast { get; set; } = true;
 
         /// <summary>
         /// The frame is enlarged by this factor before recognition. Screen text is small and
@@ -68,9 +82,11 @@ namespace ScreenSpell.Core.Models
 
         public AppSettings Clone() => new()
         {
+            SyncToRefreshRate = SyncToRefreshRate,
             ScanIntervalMs = ScanIntervalMs,
             ScanActiveWindowOnly = ScanActiveWindowOnly,
-            MinOcrConfidence = MinOcrConfidence,
+            MinTextHeight = MinTextHeight,
+            EnhanceContrast = EnhanceContrast,
             OcrScale = OcrScale,
             Language = Language,
             AdditionalLanguages = new List<string>(AdditionalLanguages),

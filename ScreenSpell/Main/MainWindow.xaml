@@ -41,11 +41,11 @@
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="الفاصل الزمني (ملّي ثانية):" VerticalAlignment="Center" Margin="0,4" />
                 <TextBox x:Name="IntervalBox" Grid.Row="0" Grid.Column="1" Margin="4"
-                         ToolTip="زمن الانتظار بين مسحتين. أقل قيمة 200. الأصغر أسرع استجابة وأعلى استهلاكًا للمعالج." />
+                         ToolTip="يُستخدم فقط عند إلغاء المزامنة مع معدل تحديث الشاشة. أقل قيمة 200." />
 
-                <TextBlock Grid.Row="0" Grid.Column="3" Text="أقل ثقة (0 - 1):" VerticalAlignment="Center" Margin="0,4" />
-                <TextBox x:Name="ConfidenceBox" Grid.Row="0" Grid.Column="4" Margin="4"
-                         ToolTip="تُتجاهل الكلمات التي يقرأها المحرك بثقة أقل من هذه القيمة." />
+                <TextBlock Grid.Row="0" Grid.Column="3" Text="أقل ارتفاع للنص (بكسل):" VerticalAlignment="Center" Margin="0,4" />
+                <TextBox x:Name="MinTextHeightBox" Grid.Row="0" Grid.Column="4" Margin="4"
+                         ToolTip="تُتجاهل الكلمات المرسومة بخط أصغر من هذا الارتفاع، لأن القراءة تكون غير موثوقة عندها. 0 = بلا حد." />
 
                 <TextBlock Grid.Row="0" Grid.Column="6" Text="إطارات التثبيت:" VerticalAlignment="Center" Margin="0,4" />
                 <TextBox x:Name="StabilityBox" Grid.Row="0" Grid.Column="7" Width="90" HorizontalAlignment="Left" Margin="4"
@@ -71,13 +71,17 @@
                 <TextBox x:Name="AdditionalLanguagesBox" Grid.Row="2" Grid.Column="4" Grid.ColumnSpan="4" Margin="4"
                          ToolTip="رموز لغات إضافية مفصولة بفاصلة، مثل en. يجب أن تكون حزمة اللغة مثبّتة. يتطلب إعادة تشغيل التطبيق." />
 
-                <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="8" Orientation="Horizontal" Margin="0,8,0,0">
+                <WrapPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="8" Orientation="Horizontal" Margin="0,8,0,0">
+                    <CheckBox x:Name="RefreshSyncCheckBox" Content="المزامنة مع معدل تحديث الشاشة" VerticalAlignment="Center" Margin="0,0,16,0"
+                              ToolTip="يُراقب المحتوى بمعدل تحديث الشاشة ويُشغّل القراءة فور استقرار الصورة بدل الانتظار زمنًا ثابتًا." />
+                    <CheckBox x:Name="EnhanceCheckBox" Content="تحسين الصورة قبل القراءة" VerticalAlignment="Center" Margin="0,0,16,0"
+                              ToolTip="تحويل إلى تدرج رمادي مع رفع التباين، ويقلّل خلط الحروف مثل ق/م." />
                     <CheckBox x:Name="StartOnLaunchCheckBox" Content="بدء التدقيق عند فتح التطبيق" VerticalAlignment="Center" Margin="0,0,16,0" />
                     <CheckBox x:Name="TrayCheckBox" Content="الإخفاء إلى شريط المهام عند الإغلاق" VerticalAlignment="Center" Margin="0,0,16,0" />
                     <Button Content="حفظ الإعدادات" Padding="12,4" Click="SaveSettingsButton_Click" />
                     <Button Content="استعادة الافتراضي" Padding="12,4" Margin="8,0,0,0" Click="ResetSettingsButton_Click" />
                     <TextBlock Text="التكبير واللغات تُطبَّق بعد إعادة تشغيل التطبيق" Foreground="Gray" VerticalAlignment="Center" Margin="12,0,0,0" />
-                </StackPanel>
+                </WrapPanel>
             </Grid>
         </Expander>
 

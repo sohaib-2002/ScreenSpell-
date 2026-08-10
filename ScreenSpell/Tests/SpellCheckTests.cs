@@ -237,6 +237,51 @@ namespace ScreenSpell.Tests
         }
     }
 
+    public class FramePreprocessorTests
+    {
+        private static ScreenFrame Frame(params byte[] greys)
+        {
+            var pixels = new byte[greys.Length * 4];
+            for (var i = 0; i < greys.Length; i++)
+            {
+                pixels[i * 4] = greys[i];
+                pixels[i * 4 + 1] = greys[i];
+                pixels[i * 4 + 2] = greys[i];
+                pixels[i * 4 + 3] = 255;
+            }
+
+            return new ScreenFrame(greys.Length, 1, greys.Length * 4, pixels);
+        }
+
+        [Fact]
+        public void LowContrastTextIsStretchedToBlackAndWhite()
+        {
+            var enhanced = FramePreprocessor.Enhance(Frame(100, 100, 160, 160));
+
+            Assert.Equal(0, enhanced.Pixels[0]);
+            Assert.Equal(255, enhanced.Pixels[12]);
+        }
+
+        [Fact]
+        public void FlatFrameIsLeftAsItIs()
+        {
+            var enhanced = FramePreprocessor.Enhance(Frame(128, 128, 128, 128));
+
+            Assert.All(new[] { 0, 4, 8, 12 }, offset => Assert.Equal(128, enhanced.Pixels[offset]));
+        }
+
+        [Fact]
+        public void ColourIsReducedToItsLuminance()
+        {
+            var pixels = new byte[] { 0, 0, 255, 255, 255, 255, 255, 255 };
+            var enhanced = FramePreprocessor.Enhance(new ScreenFrame(2, 1, 8, pixels));
+
+            Assert.Equal(enhanced.Pixels[0], enhanced.Pixels[1]);
+            Assert.Equal(enhanced.Pixels[1], enhanced.Pixels[2]);
+            Assert.True(enhanced.Pixels[0] < enhanced.Pixels[4]);
+        }
+    }
+
     public class ConfigurationManagerTests
     {
         [Fact]

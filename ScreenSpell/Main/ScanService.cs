@@ -8,8 +8,10 @@ using ScreenSpell.Text;
 namespace ScreenSpell.Main
 {
     /// <summary>
-    /// The scan loop: capture the screen, OCR it, spell check every word and hand the issues
-    /// to the overlay. One iteration is skipped entirely when the screen did not change.
+    /// The scan loop: watch the screen, OCR it, spell check every word and hand the issues to
+    /// the overlay. The screen is probed at its refresh rate but only fingerprinted, so the
+    /// expensive part runs when the picture actually changed and then settled, instead of on
+    /// a fixed timer that is either late or wasteful.
     /// </summary>
     public sealed class ScanService : IDisposable
     {
@@ -26,6 +28,9 @@ namespace ScreenSpell.Main
         private Task? _loop;
         private string _lastRendered = string.Empty;
         private string _lastRegion = string.Empty;
+        private string _lastProcessed = string.Empty;
+        private string? _pendingFingerprint;
+        private int _refreshRateHz = 60;
 
         public ScanService(
             IScreenCaptureService capture,
@@ -63,6 +68,7 @@ namespace ScreenSpell.Main
             }
 
             _stabilizer.Reset();
+            _refreshRateHz = Math.Clamp(_capture.RefreshRateHz, 24, 360);
             _cancellation = new CancellationTokenSource();
             _loop = Task.Run(() => RunAsync(_cancellation.Token));
             Report("جارٍ التدقيق…");
@@ -74,6 +80,8 @@ namespace ScreenSpell.Main
             _stabilizer.Reset();
             _lastRendered = string.Empty;
             _lastRegion = string.Empty;
+            _lastProcessed = string.Empty;
+            _pendingFingerprint = null;
             _overlay.Clear();
             Report("متوقف");
         }
@@ -82,7 +90,8 @@ namespace ScreenSpell.Main
         public async Task ScanOnceAsync(CancellationToken cancellationToken = default)
         {
             _ocrCache.Invalidate();
-            await ScanAsync(cancellationToken, stabilize: false).ConfigureAwait(false);
+            _lastProcessed = string.Empty;
+            await ScanAsync(cancellationToken, stabilize: false, requireSettled: false).ConfigureAwait(false);
         }
 
         public void Dispose()
@@ -95,9 +104,11 @@ namespace ScreenSpell.Main
         {
             while (!cancellationToken.IsCancellationRequested)
             {
+                var settings = _settings.Settings;
                 try
                 {
-                    await ScanAsync(cancellationToken).ConfigureAwait(false);
+                    await ScanAsync(cancellationToken, requireSettled: settings.SyncToRefreshRate)
+                        .ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -109,7 +120,12 @@ namespace ScreenSpell.Main
                     Report($"خطأ أثناء التدقيق: {ex.Message}");
                 }
 
-                var interval = Math.Max(200, _settings.Settings.ScanIntervalMs);
+                // In refresh mode a tick only costs a capture and a hash, so it can run as
+                // often as the display is redrawn.
+                var interval = settings.SyncToRefreshRate
+                    ? Math.Max(8, 1000 / _refreshRateHz)
+                    : Math.Max(200, settings.ScanIntervalMs);
+
                 try
                 {
                     await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
@@ -121,7 +137,10 @@ namespace ScreenSpell.Main
             }
         }
 
-        private async Task ScanAsync(CancellationToken cancellationToken, bool stabilize = true)
+        private async Task ScanAsync(
+            CancellationToken cancellationToken,
+            bool stabilize = true,
+            bool requireSettled = false)
         {
             var settings = _settings.Settings;
             var frame = settings.ScanActiveWindowOnly
@@ -131,7 +150,10 @@ namespace ScreenSpell.Main
             // Nothing to read (our own window is in front, or everything is minimized): keep
             // whatever is already on screen instead of clearing and re-drawing it.
             if (frame is null)
+            {
+                _pendingFingerprint = null;
                 return;
+            }
 
             // Switching or moving a window invalidates every underline we are showing, so drop
             // them now instead of leaving them over unrelated content until the next scan.
@@ -141,17 +163,40 @@ namespace ScreenSpell.Main
                 _lastRegion = region;
                 _stabilizer.Reset();
                 _lastRendered = string.Empty;
+                _lastProcessed = string.Empty;
                 _ocrCache.Invalidate();
                 _overlay.Clear();
             }
 
-            if (_ocrCache.TryGetCachedFrame(frame, out var cachedWords))
+            var fingerprint = OcrCache.FingerprintOf(frame);
+            if (requireSettled)
+            {
+                if (fingerprint == _lastProcessed)
+                {
+                    _pendingFingerprint = null;
+                    return;
+                }
+
+                // Recognising a frame while the window is still scrolling or animating only
+                // produces garbage, so wait until two probes in a row look the same.
+                if (fingerprint != _pendingFingerprint)
+                {
+                    _pendingFingerprint = fingerprint;
+                    return;
+                }
+            }
+
+            _pendingFingerprint = null;
+            _lastProcessed = fingerprint;
+
+            if (_ocrCache.TryGetCachedFrame(fingerprint, out var cachedWords))
             {
                 Publish(BuildIssues(cachedWords, settings), stabilize);
                 return;
             }
 
-            var words = await _ocr.ExtractTextAsync(frame, cancellationToken).ConfigureAwait(false);
+            var source = settings.EnhanceContrast ? FramePreprocessor.Enhance(frame) : frame;
+            var words = await _ocr.ExtractTextAsync(source, cancellationToken).ConfigureAwait(false);
             _ocrCache.UpdateCache(words);
 
             Publish(BuildIssues(words, settings), stabilize);
@@ -163,7 +208,8 @@ namespace ScreenSpell.Main
 
             foreach (var word in words)
             {
-                if (word.Confidence < settings.MinOcrConfidence)
+                // Text drawn this small is where the engine starts inventing letters.
+                if (word.BoundingBox.Height > 0 && word.BoundingBox.Height < settings.MinTextHeight)
                     continue;
 
                 var text = ArabicNormalizer.TrimPunctuation(word.Text);

@@ -50,7 +50,7 @@ namespace ScreenSpell.Main
         {
             var settings = _settings.Settings;
             IntervalBox.Text = settings.ScanIntervalMs.ToString(CultureInfo.InvariantCulture);
-            ConfidenceBox.Text = settings.MinOcrConfidence.ToString(CultureInfo.InvariantCulture);
+            MinTextHeightBox.Text = settings.MinTextHeight.ToString(CultureInfo.InvariantCulture);
             StabilityBox.Text = settings.StabilityFrames.ToString(CultureInfo.InvariantCulture);
             MinWordLengthBox.Text = settings.MinWordLength.ToString(CultureInfo.InvariantCulture);
             MaxSuggestionsBox.Text = settings.MaxSuggestions.ToString(CultureInfo.InvariantCulture);
@@ -59,6 +59,8 @@ namespace ScreenSpell.Main
             AdditionalLanguagesBox.Text = string.Join(", ", settings.AdditionalLanguages);
             OverlayCheckBox.IsChecked = settings.ShowOverlay;
             ActiveWindowCheckBox.IsChecked = settings.ScanActiveWindowOnly;
+            RefreshSyncCheckBox.IsChecked = settings.SyncToRefreshRate;
+            EnhanceCheckBox.IsChecked = settings.EnhanceContrast;
             StartOnLaunchCheckBox.IsChecked = settings.StartScanningOnLaunch;
             TrayCheckBox.IsChecked = settings.MinimizeToTray;
         }
@@ -115,8 +117,8 @@ namespace ScreenSpell.Main
                 if (int.TryParse(IntervalBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var interval))
                     settings.ScanIntervalMs = Math.Max(200, interval);
 
-                if (double.TryParse(ConfidenceBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var confidence))
-                    settings.MinOcrConfidence = Math.Clamp(confidence, 0, 1);
+                if (double.TryParse(MinTextHeightBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var height))
+                    settings.MinTextHeight = Math.Clamp(height, 0, 200);
 
                 if (int.TryParse(StabilityBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var frames))
                     settings.StabilityFrames = Math.Clamp(frames, 1, 10);
@@ -150,6 +152,8 @@ namespace ScreenSpell.Main
 
                 settings.ShowOverlay = OverlayCheckBox.IsChecked == true;
                 settings.ScanActiveWindowOnly = ActiveWindowCheckBox.IsChecked == true;
+                settings.SyncToRefreshRate = RefreshSyncCheckBox.IsChecked == true;
+                settings.EnhanceContrast = EnhanceCheckBox.IsChecked == true;
                 settings.StartScanningOnLaunch = StartOnLaunchCheckBox.IsChecked == true;
                 settings.MinimizeToTray = TrayCheckBox.IsChecked == true;
             });
@@ -167,7 +171,9 @@ namespace ScreenSpell.Main
             _settings.Update(settings =>
             {
                 settings.ScanIntervalMs = defaults.ScanIntervalMs;
-                settings.MinOcrConfidence = defaults.MinOcrConfidence;
+                settings.MinTextHeight = defaults.MinTextHeight;
+                settings.SyncToRefreshRate = defaults.SyncToRefreshRate;
+                settings.EnhanceContrast = defaults.EnhanceContrast;
                 settings.StabilityFrames = defaults.StabilityFrames;
                 settings.MinWordLength = defaults.MinWordLength;
                 settings.MaxSuggestions = defaults.MaxSuggestions;
