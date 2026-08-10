@@ -52,6 +52,9 @@ namespace ScreenSpell.SpellCheck
             if (_suggestions.IsIgnoredOrValid(normalized) || _dictionary.ContainsWithAffixes(normalized))
                 return SpellResult.Correct(word);
 
+            if (IsGluedPair(normalized))
+                return SpellResult.Correct(word);
+
             var candidates = _dictionary
                 .CandidatesFor(normalized, MaxEditDistance)
                 .Where(candidate => EditDistance.Compute(normalized, candidate, MaxEditDistance) <= MaxEditDistance);
@@ -63,6 +66,28 @@ namespace ScreenSpell.SpellCheck
             // missing from the word list.
             var confidence = ranked.Count > 0 ? 0.9 : 0.6;
             return SpellResult.Error(trimmed, ranked, confidence);
+        }
+
+        /// <summary>
+        /// OCR frequently drops the space between two labels ("New item" comes back as
+        /// "newitem"). Such a token is accepted when it splits into two known words.
+        /// </summary>
+        private bool IsGluedPair(string normalized)
+        {
+            const int minPart = 3;
+            if (normalized.Length < minPart * 2)
+                return false;
+
+            for (var cut = minPart; cut <= normalized.Length - minPart; cut++)
+            {
+                if (_dictionary.ContainsWithAffixes(normalized[..cut]) &&
+                    _dictionary.ContainsWithAffixes(normalized[cut..]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public List<string> GetSuggestions(string word) => CheckWord(word).Suggestions;

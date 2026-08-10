@@ -9,10 +9,10 @@ namespace ScreenSpell.Core.Interfaces
 
         /// <summary>
         /// Grabs the foreground window only. Far cheaper than the whole screen, which is what
-        /// keeps the scan loop up with window switching; falls back to the primary screen when
-        /// there is no usable foreground window.
+        /// keeps the scan loop up with window switching. Returns null when there is nothing
+        /// worth scanning: no foreground window, a minimized one, or one of our own.
         /// </summary>
-        ScreenFrame CaptureActiveWindow();
+        ScreenFrame? CaptureActiveWindow();
 
         /// <summary>Grabs a rectangle of the virtual desktop as a BGRA frame.</summary>
         ScreenFrame CaptureRegion(int x, int y, int width, int height);

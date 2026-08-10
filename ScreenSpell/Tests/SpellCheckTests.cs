@@ -178,6 +178,15 @@ namespace ScreenSpell.Tests
         }
 
         [Fact]
+        public void TwoWordsGluedTogetherByOcrAreAccepted()
+        {
+            var checker = Build("new", "item", "select");
+
+            Assert.False(checker.CheckWord("newitem").IsError);
+            Assert.True(checker.CheckWord("newxyzzy").IsError);
+        }
+
+        [Fact]
         public void AcronymsAndMixedScriptTokensAreLeftAlone()
         {
             var checker = Build("مدرسة");

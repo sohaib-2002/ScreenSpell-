@@ -128,6 +128,11 @@ namespace ScreenSpell.Main
                 ? _capture.CaptureActiveWindow()
                 : _capture.CaptureScreen();
 
+            // Nothing to read (our own window is in front, or everything is minimized): keep
+            // whatever is already on screen instead of clearing and re-drawing it.
+            if (frame is null)
+                return;
+
             // Switching or moving a window invalidates every underline we are showing, so drop
             // them now instead of leaving them over unrelated content until the next scan.
             var region = $"{frame.OriginX},{frame.OriginY},{frame.Width}x{frame.Height}";

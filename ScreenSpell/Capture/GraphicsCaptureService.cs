@@ -21,12 +21,13 @@ namespace ScreenSpell.Capture
             return CaptureRegion(bounds.X, bounds.Y, bounds.Width, bounds.Height);
         }
 
-        public ScreenFrame CaptureActiveWindow()
+        public ScreenFrame? CaptureActiveWindow()
         {
             var bounds = ForegroundWindowBounds();
-            return bounds is null
-                ? CaptureScreen()
-                : CaptureRegion(bounds.Value.X, bounds.Value.Y, bounds.Value.Width, bounds.Value.Height);
+            if (bounds is null)
+                return null;
+
+            return CaptureRegion(bounds.Value.X, bounds.Value.Y, bounds.Value.Width, bounds.Value.Height);
         }
 
         /// <summary>Grabs every monitor of the virtual desktop in one frame.</summary>
@@ -44,6 +45,11 @@ namespace ScreenSpell.Capture
         {
             var handle = NativeMethods.GetForegroundWindow();
             if (handle == IntPtr.Zero)
+                return null;
+
+            // Checking our own window would only report the words listed in it.
+            NativeMethods.GetWindowThreadProcessId(handle, out var processId);
+            if (processId == Environment.ProcessId)
                 return null;
 
             NativeMethods.Rect rect;
@@ -107,6 +113,9 @@ namespace ScreenSpell.Capture
 
             [DllImport("user32.dll")]
             public static extern IntPtr GetForegroundWindow();
+
+            [DllImport("user32.dll")]
+            public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int processId);
 
             [DllImport("user32.dll")]
             [return: MarshalAs(UnmanagedType.Bool)]
