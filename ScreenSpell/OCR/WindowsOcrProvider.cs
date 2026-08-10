@@ -7,6 +7,7 @@ using ScreenSpell.Core.Models;
 using Windows.Globalization;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
+using Windows.Storage.Streams;
 using OcrWord = ScreenSpell.Core.Models.OcrWord;
 
 namespace ScreenSpell.OCR
@@ -23,10 +24,12 @@ namespace ScreenSpell.OCR
     {
         private readonly ILogger<WindowsOcrProvider> _logger;
         private readonly List<OcrEngine> _engines = new();
+        private readonly double _scale;
 
         public WindowsOcrProvider(AppSettings? settings = null, ILogger<WindowsOcrProvider>? logger = null)
         {
             _logger = logger ?? NullLogger<WindowsOcrProvider>.Instance;
+            _scale = Math.Clamp(settings?.OcrScale ?? 2.0, 1.0, 4.0);
 
             var primary = string.IsNullOrWhiteSpace(settings?.Language) ? "ar" : settings!.Language;
             var tags = new List<string> { primary };
@@ -70,9 +73,13 @@ namespace ScreenSpell.OCR
 
             try
             {
-                using var bitmap = ToSoftwareBitmap(frame);
+                using var captured = ToSoftwareBitmap(frame);
+                using var scaled = await ScaleAsync(captured, _scale, cancellationToken).ConfigureAwait(false);
+                var bitmap = scaled ?? captured;
+
                 // Every engine reads the whole frame, so the same word can come back twice.
                 var seen = new HashSet<string>(StringComparer.Ordinal);
+                var factor = scaled is null ? 1.0 : _scale;
 
                 foreach (var engine in _engines)
                 {
@@ -83,17 +90,21 @@ namespace ScreenSpell.OCR
                         foreach (var word in line.Words)
                         {
                             var rect = word.BoundingRect;
-                            if (!seen.Add($"{word.Text}@{(int)rect.X},{(int)rect.Y}"))
+                            // Boxes come back in the scaled image's coordinates.
+                            var x = rect.X / factor;
+                            var y = rect.Y / factor;
+
+                            if (!seen.Add($"{word.Text}@{(int)x},{(int)y}"))
                                 continue;
 
                             words.Add(new OcrWord
                             {
                                 Text = word.Text,
                                 BoundingBox = new BoundingBox(
-                                    rect.X + frame.OriginX,
-                                    rect.Y + frame.OriginY,
-                                    rect.Width,
-                                    rect.Height),
+                                    x + frame.OriginX,
+                                    y + frame.OriginY,
+                                    rect.Width / factor,
+                                    rect.Height / factor),
                                 // Windows.Media.Ocr does not expose a per word score.
                                 Confidence = 1.0
                             });
@@ -133,6 +144,58 @@ namespace ScreenSpell.OCR
             }
         }
 
+        /// <summary>
+        /// Enlarges the frame so small UI text reaches a size the engine reads reliably.
+        /// Returns null when no scaling happened, so the caller keeps the original bitmap.
+        /// </summary>
+        private async Task<SoftwareBitmap?> ScaleAsync(
+            SoftwareBitmap source,
+            double scale,
+            CancellationToken cancellationToken)
+        {
+            if (scale <= 1.0)
+                return null;
+
+            var width = (uint)(source.PixelWidth * scale);
+            var height = (uint)(source.PixelHeight * scale);
+            if (Math.Max(width, height) > OcrEngine.MaxImageDimension)
+                return null;
+
+            try
+            {
+                using var stream = new InMemoryRandomAccessStream();
+                var encoder = await BitmapEncoder
+                    .CreateAsync(BitmapEncoder.BmpEncoderId, stream)
+                    .AsTask(cancellationToken)
+                    .ConfigureAwait(false);
+
+                encoder.SetSoftwareBitmap(source);
+                encoder.BitmapTransform.ScaledWidth = width;
+                encoder.BitmapTransform.ScaledHeight = height;
+                encoder.BitmapTransform.InterpolationMode = BitmapInterpolationMode.Fant;
+                await encoder.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
+
+                var decoder = await BitmapDecoder
+                    .CreateAsync(stream)
+                    .AsTask(cancellationToken)
+                    .ConfigureAwait(false);
+
+                return await decoder
+                    .GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied)
+                    .AsTask(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not upscale the frame by {Scale}x; recognising it as captured.", scale);
+                return null;
+            }
+        }
+
         private static SoftwareBitmap ToSoftwareBitmap(ScreenFrame frame)
         {
             var packedStride = frame.Width * 4;
@@ -146,7 +209,7 @@ namespace ScreenSpell.OCR
             {
                 pixels = new byte[packedStride * frame.Height];
                 for (var y = 0; y < frame.Height; y++)
-                    Buffer.BlockCopy(frame.Pixels, y * frame.Stride, pixels, y * packedStride, packedStride);
+                    System.Buffer.BlockCopy(frame.Pixels, y * frame.Stride, pixels, y * packedStride, packedStride);
             }
 
             var bitmap = new SoftwareBitmap(BitmapPixelFormat.Bgra8, frame.Width, frame.Height, BitmapAlphaMode.Premultiplied);

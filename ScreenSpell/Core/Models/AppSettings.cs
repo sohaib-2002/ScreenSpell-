@@ -8,6 +8,13 @@ namespace ScreenSpell.Core.Models
         /// <summary>OCR words below this confidence are ignored.</summary>
         public double MinOcrConfidence { get; set; } = 0.5;
 
+        /// <summary>
+        /// The frame is enlarged by this factor before recognition. Screen text is small and
+        /// the Windows engine misreads letters at native resolution (التوقيع read as التوميع);
+        /// 1 disables the upscale.
+        /// </summary>
+        public double OcrScale { get; set; } = 2.0;
+
         /// <summary>BCP-47 language tag handed to the OCR engine.</summary>
         public string Language { get; set; } = "ar";
 
@@ -56,6 +63,7 @@ namespace ScreenSpell.Core.Models
         {
             ScanIntervalMs = ScanIntervalMs,
             MinOcrConfidence = MinOcrConfidence,
+            OcrScale = OcrScale,
             Language = Language,
             AdditionalLanguages = new List<string>(AdditionalLanguages),
             StabilityFrames = StabilityFrames,

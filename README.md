@@ -67,6 +67,7 @@ Settings live in `%LOCALAPPDATA%\ScreenSpell\settings.json` and are written when
 {
   "ScanIntervalMs": 1500,        // delay between scans
   "MinOcrConfidence": 0.5,       // 0..1, OCR words below this are ignored
+  "OcrScale": 2.0,               // frame is enlarged this much before OCR (1 = off, applied at startup)
   "Language": "ar",              // primary OCR language tag
   "AdditionalLanguages": ["en"], // extra OCR languages, if their packs are installed
   "StabilityFrames": 2,          // scans a word must stay wrong before it is underlined (1 = off)
