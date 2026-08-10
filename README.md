@@ -81,16 +81,18 @@ Settings live in `%LOCALAPPDATA%\ScreenSpell\settings.json` and are written when
 
 ## Dictionaries
 
-The spell checker is word-list based. It ships with a small seed list
-(`SpellCheck/Dictionaries/ar-seed.txt`) that is only enough for a smoke test — for real
-coverage drop a full Arabic word list into either
+The spell checker is word-list based and ships with the LibreOffice/ayaspell Arabic word list
+(`SpellCheck/Dictionaries/ar.dic`, ~274k normalized entries) plus a small seed list of
+app-specific terms. Both are copied next to the executable at build time, so no extra
+download is needed.
+
+To add more word lists (another language, domain vocabulary), drop them into either
 
 - `Dictionaries\` next to `ScreenSpell.exe`, or
 - `%LOCALAPPDATA%\ScreenSpell\Dictionaries\`
 
 Both `*.txt` (one word per line, `#` comments) and Hunspell `*.dic` files (`word/FLAGS`) are
-accepted; the [ayaspell](https://github.com/linuxscout/ayaspell-dic) `ar.dic` is a good
-starting point. Common clitics (`ال`, `و`, `ب`, `ل`, `ها`, `هم` …) are stripped before lookup,
+accepted. Common clitics (`ال`, `و`, `ب`, `ل`, `ها`, `هم` …) are stripped before lookup,
 so a stem list already covers most inflected forms.
 
 ## Optional ONNX model

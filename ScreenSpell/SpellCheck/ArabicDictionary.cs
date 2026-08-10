@@ -8,6 +8,7 @@ namespace ScreenSpell.SpellCheck
     /// </summary>
     public sealed class ArabicDictionary
     {
+        private static readonly char[] HunspellSeparators = { '/', '\t' };
         private static readonly string[] Prefixes = { "وال", "بال", "كال", "فال", "لل", "ال", "و", "ف", "ب", "ك", "ل", "س" };
         private static readonly string[] Suffixes = { "هما", "كما", "تين", "تان", "هم", "هن", "كم", "كن", "نا", "ها", "ات", "ان", "ون", "ين", "وا", "ية", "ه", "ك", "ي", "ا" };
 
@@ -68,9 +69,10 @@ namespace ScreenSpell.SpellCheck
                 if (line.Length == 0 || line.StartsWith('#'))
                     continue;
 
-                var slash = line.IndexOf('/');
-                if (slash > 0)
-                    line = line[..slash];
+                // Hunspell entries look like "word/FLAGS\tmorphological fields".
+                var cut = line.IndexOfAny(HunspellSeparators);
+                if (cut > 0)
+                    line = line[..cut];
 
                 // The first line of a Hunspell .dic file is the entry count.
                 if (line.All(char.IsAsciiDigit))
