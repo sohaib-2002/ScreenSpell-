@@ -51,8 +51,16 @@ namespace ScreenSpell.Main
             var settings = _settings.Settings;
             IntervalBox.Text = settings.ScanIntervalMs.ToString(CultureInfo.InvariantCulture);
             ConfidenceBox.Text = settings.MinOcrConfidence.ToString(CultureInfo.InvariantCulture);
+            StabilityBox.Text = settings.StabilityFrames.ToString(CultureInfo.InvariantCulture);
+            MinWordLengthBox.Text = settings.MinWordLength.ToString(CultureInfo.InvariantCulture);
+            MaxSuggestionsBox.Text = settings.MaxSuggestions.ToString(CultureInfo.InvariantCulture);
+            OcrScaleBox.Text = settings.OcrScale.ToString(CultureInfo.InvariantCulture);
+            LanguageBox.Text = settings.Language;
+            AdditionalLanguagesBox.Text = string.Join(", ", settings.AdditionalLanguages);
             OverlayCheckBox.IsChecked = settings.ShowOverlay;
             ActiveWindowCheckBox.IsChecked = settings.ScanActiveWindowOnly;
+            StartOnLaunchCheckBox.IsChecked = settings.StartScanningOnLaunch;
+            TrayCheckBox.IsChecked = settings.MinimizeToTray;
         }
 
         private void StartScanning()
@@ -88,8 +96,20 @@ namespace ScreenSpell.Main
             }
         }
 
+        /// <summary>Toolbar toggles are saved immediately so they take effect on the next scan.</summary>
+        private void QuickToggle_Click(object sender, RoutedEventArgs e)
+        {
+            _settings.Update(settings =>
+            {
+                settings.ShowOverlay = OverlayCheckBox.IsChecked == true;
+                settings.ScanActiveWindowOnly = ActiveWindowCheckBox.IsChecked == true;
+            });
+        }
+
         private void SaveSettingsButton_Click(object sender, RoutedEventArgs e)
         {
+            var needsRestart = false;
+
             _settings.Update(settings =>
             {
                 if (int.TryParse(IntervalBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var interval))
@@ -98,12 +118,70 @@ namespace ScreenSpell.Main
                 if (double.TryParse(ConfidenceBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var confidence))
                     settings.MinOcrConfidence = Math.Clamp(confidence, 0, 1);
 
+                if (int.TryParse(StabilityBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var frames))
+                    settings.StabilityFrames = Math.Clamp(frames, 1, 10);
+
+                if (int.TryParse(MinWordLengthBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var length))
+                    settings.MinWordLength = Math.Clamp(length, 1, 20);
+
+                if (int.TryParse(MaxSuggestionsBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var suggestions))
+                    settings.MaxSuggestions = Math.Clamp(suggestions, 1, 20);
+
+                if (double.TryParse(OcrScaleBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var scale))
+                {
+                    var clamped = Math.Clamp(scale, 1.0, 4.0);
+                    needsRestart |= Math.Abs(clamped - settings.OcrScale) > 0.001;
+                    settings.OcrScale = clamped;
+                }
+
+                var language = LanguageBox.Text.Trim();
+                if (language.Length > 0)
+                {
+                    needsRestart |= !string.Equals(language, settings.Language, StringComparison.OrdinalIgnoreCase);
+                    settings.Language = language;
+                }
+
+                var additional = AdditionalLanguagesBox.Text
+                    .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToList();
+
+                needsRestart |= !additional.SequenceEqual(settings.AdditionalLanguages, StringComparer.OrdinalIgnoreCase);
+                settings.AdditionalLanguages = additional;
+
                 settings.ShowOverlay = OverlayCheckBox.IsChecked == true;
                 settings.ScanActiveWindowOnly = ActiveWindowCheckBox.IsChecked == true;
+                settings.StartScanningOnLaunch = StartOnLaunchCheckBox.IsChecked == true;
+                settings.MinimizeToTray = TrayCheckBox.IsChecked == true;
             });
 
             LoadSettingsIntoUi();
-            StatusText.Text = "تم حفظ الإعدادات";
+            StatusText.Text = needsRestart
+                ? "تم حفظ الإعدادات - أعد تشغيل التطبيق لتطبيق التكبير واللغات"
+                : "تم حفظ الإعدادات";
+        }
+
+        private void ResetSettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            var defaults = new AppSettings();
+
+            _settings.Update(settings =>
+            {
+                settings.ScanIntervalMs = defaults.ScanIntervalMs;
+                settings.MinOcrConfidence = defaults.MinOcrConfidence;
+                settings.StabilityFrames = defaults.StabilityFrames;
+                settings.MinWordLength = defaults.MinWordLength;
+                settings.MaxSuggestions = defaults.MaxSuggestions;
+                settings.OcrScale = defaults.OcrScale;
+                settings.Language = defaults.Language;
+                settings.AdditionalLanguages = new List<string>(defaults.AdditionalLanguages);
+                settings.ShowOverlay = defaults.ShowOverlay;
+                settings.ScanActiveWindowOnly = defaults.ScanActiveWindowOnly;
+                settings.StartScanningOnLaunch = defaults.StartScanningOnLaunch;
+                settings.MinimizeToTray = defaults.MinimizeToTray;
+            });
+
+            LoadSettingsIntoUi();
+            StatusText.Text = "تمت استعادة الإعدادات الافتراضية";
         }
 
         private void IgnoreButton_Click(object sender, RoutedEventArgs e)

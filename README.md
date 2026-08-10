@@ -53,8 +53,19 @@ cannot be executed there.
 | أقل ثقة | OCR words below this confidence are skipped |
 | إظهار الطبقة فوق الشاشة | toggles the on-screen squiggles |
 | النافذة النشطة فقط | scans only the window in front, which is much faster |
+| إطارات التثبيت | consecutive scans before a word is underlined (1 disables the smoothing) |
+| أقل طول للكلمة | shorter words are never checked |
+| عدد الاقتراحات | how many corrections are listed per word |
+| تكبير الصورة قبل القراءة | upscale applied before OCR, 1 to 4 (needs a restart) |
+| لغة القراءة / لغات إضافية | OCR language tags, comma separated (needs a restart) |
+| بدء التدقيق عند فتح التطبيق | starts the loop automatically |
+| الإخفاء إلى شريط المهام عند الإغلاق | keeps the app running in the tray |
+| استعادة الافتراضي | puts every setting above back to its default |
 | تجاهل | ignores the word for this session |
 | إضافة إلى القاموس | adds the word to your dictionary, permanently |
+
+Every setting in `settings.json` that is worth changing is editable from the *الإعدادات* panel;
+the two toolbar checkboxes are saved as soon as you click them, the rest on *حفظ الإعدادات*.
 
 Closing the window keeps the app in the notification area; use *خروج* in the tray menu to
 quit (set `MinimizeToTray` to `false` to close on window close instead).
