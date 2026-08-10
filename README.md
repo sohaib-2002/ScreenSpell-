@@ -1,1 +1,119 @@
-# ScreenSpell-
+# ScreenSpell — التدقيق الإملائي العربي على الشاشة
+
+ScreenSpell watches your Windows desktop, reads the Arabic text on screen with the built-in
+Windows OCR engine, spell checks every word and draws a red squiggle under the suspicious
+ones through a transparent, click-through overlay. Found words are also listed in the main
+window where they can be ignored or added to your personal dictionary.
+
+## Requirements
+
+- Windows 10 version 2004 (build 19041) or newer / Windows 11
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (SDK to build, runtime to run)
+- The **Arabic** OCR language pack:
+  `Settings > Time & language > Language & region > Add a language > العربية`,
+  and make sure *Optical character recognition* is ticked in the optional features.
+  Without it the app starts but the status bar reports that OCR is unavailable.
+
+## Build and run
+
+```powershell
+git clone <this-repo>
+cd ScreenSpell\ScreenSpell
+dotnet restore
+dotnet build -c Release
+dotnet run --project Main\ScreenSpell.Main.csproj -c Release
+```
+
+A self-contained folder you can copy anywhere:
+
+```powershell
+dotnet publish Main\ScreenSpell.Main.csproj -c Release -r win-x64 --self-contained false -o publish
+.\publish\ScreenSpell.exe
+```
+
+### Tests
+
+```powershell
+dotnet test Tests\ScreenSpell.Tests.csproj
+```
+
+The test project and every non-UI project target plain `net8.0`, so they also build and run
+on Linux/macOS. The `Capture`, `OCR`, `Overlay`, `Tray` and `Main` projects are Windows only;
+building them from a non-Windows machine requires `-p:EnableWindowsTargeting=true` and they
+cannot be executed there.
+
+## Using the app
+
+| Control | Effect |
+| --- | --- |
+| بدء التدقيق / إيقاف | starts and stops the periodic scan loop |
+| فحص الآن | forces a single scan, ignoring the unchanged-screen cache |
+| الفاصل الزمني | milliseconds between two scans (minimum 200) |
+| أقل ثقة | OCR words below this confidence are skipped |
+| إظهار الطبقة فوق الشاشة | toggles the on-screen squiggles |
+| تجاهل | ignores the word for this session |
+| إضافة إلى القاموس | adds the word to your dictionary, permanently |
+
+Closing the window keeps the app in the notification area; use *خروج* in the tray menu to
+quit (set `MinimizeToTray` to `false` to close on window close instead).
+
+## Configuration
+
+Settings live in `%LOCALAPPDATA%\ScreenSpell\settings.json` and are written whenever you press
+*حفظ الإعدادات* or add a word to the dictionary. Logs are written next to it under `Logs\`.
+
+```jsonc
+{
+  "ScanIntervalMs": 1500,        // delay between scans
+  "MinOcrConfidence": 0.5,       // 0..1, OCR words below this are ignored
+  "Language": "ar",              // OCR language tag
+  "MaxSuggestions": 5,
+  "MinWordLength": 3,            // shorter tokens are treated as noise
+  "ShowOverlay": true,
+  "StartScanningOnLaunch": false,
+  "MinimizeToTray": true,
+  "DictionaryDirectory": "Dictionaries",
+  "OnnxModelPath": "Models/ArabicSpellModel.onnx",
+  "UserDictionary": [],
+  "IgnoredWords": []
+}
+```
+
+## Dictionaries
+
+The spell checker is word-list based. It ships with a small seed list
+(`SpellCheck/Dictionaries/ar-seed.txt`) that is only enough for a smoke test — for real
+coverage drop a full Arabic word list into either
+
+- `Dictionaries\` next to `ScreenSpell.exe`, or
+- `%LOCALAPPDATA%\ScreenSpell\Dictionaries\`
+
+Both `*.txt` (one word per line, `#` comments) and Hunspell `*.dic` files (`word/FLAGS`) are
+accepted; the [ayaspell](https://github.com/linuxscout/ayaspell-dic) `ar.dic` is a good
+starting point. Common clitics (`ال`, `و`, `ب`, `ل`, `ها`, `هم` …) are stripped before lookup,
+so a stem list already covers most inflected forms.
+
+## Optional ONNX model
+
+If you have a character-level Arabic misspelling classifier exported to ONNX, put it at the
+`OnnxModelPath` above together with a `vocab.txt` (one character per line, the line index is
+the token id). The model must take a single `int64[1, sequence]` input and return a
+`float[1, 2]` output where index 1 is the "misspelled" logit. When the model is absent or
+fails to load, the word list checker is used instead — this is the default and fully
+supported path.
+
+## Project layout
+
+| Project | Target | Role |
+| --- | --- | --- |
+| `Core` | net8.0 | models (`ScreenFrame`, `OcrWord`, `SpellIssue`, `AppSettings`) and service interfaces |
+| `Text` | net8.0 | Arabic normalisation (diacritics, tatweel, alif/yaa variants, digits) |
+| `SpellCheck` | net8.0 | word list, edit distance, suggestion ranking, ONNX wrapper |
+| `Cache` | net8.0 | frame hash cache + per-word result cache |
+| `Settings` | net8.0 | JSON settings persistence |
+| `Capture` | net8.0-windows | GDI screen capture into a `ScreenFrame` |
+| `OCR` | net8.0-windows10.0.19041.0 | `Windows.Media.Ocr` provider |
+| `Overlay` | net8.0-windows | transparent click-through squiggle overlay |
+| `Tray` | net8.0-windows | notification area icon and menu |
+| `Main` | net8.0-windows10.0.19041.0 | WPF shell, DI host, scan loop |
+| `Tests` | net8.0 | xUnit tests for the non-UI layers |
