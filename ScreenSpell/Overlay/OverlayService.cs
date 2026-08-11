@@ -20,6 +20,8 @@ namespace ScreenSpell.Overlay
             _dispatcher = dispatcher ?? Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
         }
 
+        public event EventHandler<OverlayWordAction>? WordActionRequested;
+
         public void Show() => Invoke(window => window.Show());
 
         public void Hide() => Invoke(window => window.Hide());
@@ -33,6 +35,13 @@ namespace ScreenSpell.Overlay
         });
 
         public void Clear() => Invoke(window => window.Clear());
+
+        private OverlayWindow CreateWindow()
+        {
+            var window = new OverlayWindow();
+            window.WordActionRequested += (_, action) => WordActionRequested?.Invoke(this, action);
+            return window;
+        }
 
         public void Dispose()
         {
@@ -52,7 +61,7 @@ namespace ScreenSpell.Overlay
             if (_disposed)
                 return;
 
-            _dispatcher.Invoke(() => action(_window ??= new OverlayWindow()));
+            _dispatcher.Invoke(() => action(_window ??= CreateWindow()));
         }
     }
 }

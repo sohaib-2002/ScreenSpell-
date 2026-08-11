@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using ScreenSpell.Cache;
 using ScreenSpell.Core.Interfaces;
@@ -25,6 +26,7 @@ namespace ScreenSpell.Main
         private readonly IOcrProvider _ocr;
         private readonly ITextSource? _textSource;
         private readonly ISpellChecker _spellChecker;
+        private readonly IUserWordList? _userWords;
         private readonly IOverlayService _overlay;
         private readonly OcrCache _ocrCache;
         private readonly ISettingsService _settings;
@@ -33,13 +35,26 @@ namespace ScreenSpell.Main
         private readonly DirtyRegionTracker _dirtyRegions = new();
         private IReadOnlyList<OcrWord> _lastWords = Array.Empty<OcrWord>();
 
+        private readonly SemaphoreSlim _oneScanAtATime = new(1, 1);
+        private readonly Stopwatch _sinceDirectRead = Stopwatch.StartNew();
+
         private CancellationTokenSource? _cancellation;
         private Task? _loop;
+        private int _idleTicks;
+        private bool _windowExposesText;
         private string _lastRendered = string.Empty;
         private string _lastRegion = string.Empty;
         private string _lastProcessed = string.Empty;
         private string? _pendingFingerprint;
         private int _refreshRateHz = 60;
+
+        /// <summary>Walking the whole automation tree more often than this is wasted work.</summary>
+        private static readonly TimeSpan DirectReadInterval = TimeSpan.FromMilliseconds(200);
+
+        /// <summary>A still screen is probed this slowly, and instantly back at full pace once it moves.</summary>
+        private const int IdleIntervalMs = 250;
+
+        private const int TicksBeforeIdle = 40;
 
         public ScanService(
             IScreenCaptureService capture,
@@ -59,6 +74,68 @@ namespace ScreenSpell.Main
             _ocrCache = ocrCache;
             _settings = settings;
             _logger = logger;
+            _userWords = spellChecker as IUserWordList;
+
+            _overlay.WordActionRequested += OnOverlayWordAction;
+        }
+
+        /// <summary>
+        /// A word settled from the menu on the overlay: nothing here should send the user back
+        /// to the main window, so the decision is applied and the word stops being reported
+        /// from the next pass on.
+        /// </summary>
+        private void OnOverlayWordAction(object? sender, OverlayWordAction action)
+        {
+            switch (action.Kind)
+            {
+                case OverlayActionKind.Ignore:
+                    _userWords?.IgnoreWord(action.Word);
+                    _settings.Update(settings =>
+                    {
+                        if (!settings.IgnoredWords.Contains(action.Word))
+                            settings.IgnoredWords.Add(action.Word);
+                    });
+                    Report($"تم تجاهل «{action.Word}»");
+                    break;
+
+                case OverlayActionKind.AddToDictionary:
+                    _userWords?.AddToDictionary(action.Word);
+                    _settings.Update(settings =>
+                    {
+                        if (!settings.UserDictionary.Contains(action.Word))
+                            settings.UserDictionary.Add(action.Word);
+                    });
+                    Report($"تمت إضافة «{action.Word}» إلى القاموس");
+                    break;
+
+                case OverlayActionKind.Suggestion when action.Suggestion is { Length: > 0 } suggestion:
+                    // We cannot type into someone else's window, so the correction is put where
+                    // any application can take it: one paste away.
+                    CopyToClipboard(suggestion);
+                    Report($"تم نسخ «{suggestion}» — الصقها مكان الكلمة");
+                    break;
+            }
+
+            // The published set changed underneath us, so the next identical scan must draw.
+            _lastRendered = string.Empty;
+            _lastProcessed = string.Empty;
+        }
+
+        private void CopyToClipboard(string text)
+        {
+            try
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher is null)
+                    return;
+
+                dispatcher.Invoke(() => System.Windows.Clipboard.SetText(text));
+            }
+            catch (Exception ex)
+            {
+                // Another process can hold the clipboard open; losing a copy is not worth a crash.
+                _logger.LogWarning(ex, "Could not copy the suggestion to the clipboard.");
+            }
         }
 
         public event EventHandler<IReadOnlyList<SpellIssue>>? IssuesUpdated;
@@ -80,6 +157,7 @@ namespace ScreenSpell.Main
 
             _stabilizer.Reset();
             _dirtyRegions.Reset();
+            _idleTicks = 0;
             _refreshRateHz = Math.Clamp(_capture.RefreshRateHz, 24, 360);
             _cancellation = new CancellationTokenSource();
             _loop = Task.Run(() => RunAsync(_cancellation.Token));
@@ -96,6 +174,8 @@ namespace ScreenSpell.Main
             _lastRegion = string.Empty;
             _lastProcessed = string.Empty;
             _pendingFingerprint = null;
+            _windowExposesText = false;
+            _idleTicks = 0;
             _overlay.Clear();
             Report("متوقف");
         }
@@ -106,13 +186,17 @@ namespace ScreenSpell.Main
             _ocrCache.Invalidate();
             _dirtyRegions.Reset();
             _lastProcessed = string.Empty;
-            await ScanAsync(cancellationToken, stabilize: false, requireSettled: false).ConfigureAwait(false);
+            _sinceDirectRead.Restart();
+            await ScanAsync(cancellationToken, stabilize: false, requireSettled: false, waitForTurn: true)
+                .ConfigureAwait(false);
         }
 
         public void Dispose()
         {
+            _overlay.WordActionRequested -= OnOverlayWordAction;
             _cancellation?.Cancel();
             _cancellation?.Dispose();
+            _oneScanAtATime.Dispose();
         }
 
         private async Task RunAsync(CancellationToken cancellationToken)
@@ -135,10 +219,13 @@ namespace ScreenSpell.Main
                     Report($"خطأ أثناء التدقيق: {ex.Message}");
                 }
 
-                // In refresh mode a tick only costs a capture and a hash, so it can run as
-                // often as the display is redrawn.
+                // In refresh mode a tick only costs a downscaled probe and a hash, so it can
+                // run as often as the display is redrawn - but a screen nobody is touching is
+                // not worth watching sixty times a second, so the pace drops until it moves.
                 var interval = settings.SyncToRefreshRate
-                    ? Math.Max(8, 1000 / _refreshRateHz)
+                    ? _idleTicks >= TicksBeforeIdle
+                        ? IdleIntervalMs
+                        : Math.Max(8, 1000 / _refreshRateHz)
                     : Math.Max(200, settings.ScanIntervalMs);
 
                 try
@@ -155,16 +242,40 @@ namespace ScreenSpell.Main
         private async Task ScanAsync(
             CancellationToken cancellationToken,
             bool stabilize = true,
-            bool requireSettled = false)
+            bool requireSettled = false,
+            bool waitForTurn = false)
+        {
+            // A pass that is still recognising must not be joined by the next tick, or the
+            // machine ends up running several recognitions over the same window at once.
+            if (waitForTurn)
+                await _oneScanAtATime.WaitAsync(cancellationToken).ConfigureAwait(false);
+            else if (!await _oneScanAtATime.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+                return;
+
+            try
+            {
+                await ScanCoreAsync(cancellationToken, stabilize, requireSettled).ConfigureAwait(false);
+            }
+            finally
+            {
+                _oneScanAtATime.Release();
+            }
+        }
+
+        private async Task ScanCoreAsync(
+            CancellationToken cancellationToken,
+            bool stabilize,
+            bool requireSettled)
         {
             var settings = _settings.Settings;
-            var frame = settings.ScanActiveWindowOnly
-                ? _capture.CaptureActiveWindow()
-                : _capture.CaptureScreen();
+
+            // Watching costs a downscaled grab, not a full one: a tick that finds the screen
+            // unchanged - which is almost every tick - never touches a megabyte of pixels.
+            var probe = _capture.CaptureProbe(settings.ScanActiveWindowOnly);
 
             // Nothing to read (our own window is in front, or everything is minimized): keep
             // whatever is already on screen instead of clearing and re-drawing it.
-            if (frame is null)
+            if (probe is null)
             {
                 _pendingFingerprint = null;
                 return;
@@ -172,7 +283,7 @@ namespace ScreenSpell.Main
 
             // Switching or moving a window invalidates every underline we are showing, so drop
             // them now instead of leaving them over unrelated content until the next scan.
-            var region = $"{frame.OriginX},{frame.OriginY},{frame.Width}x{frame.Height}";
+            var region = $"{probe.OriginX},{probe.OriginY},{probe.Width}x{probe.Height}";
             if (region != _lastRegion)
             {
                 _lastRegion = region;
@@ -180,23 +291,35 @@ namespace ScreenSpell.Main
                 _lastRendered = string.Empty;
                 _lastProcessed = string.Empty;
                 _lastWords = Array.Empty<OcrWord>();
+                _windowExposesText = false;
                 _ocrCache.Invalidate();
                 _dirtyRegions.Reset();
                 _overlay.Clear();
             }
 
-            var fingerprint = OcrCache.FingerprintOf(frame);
+            var fingerprint = OcrCache.FingerprintOf(probe);
             if (fingerprint == _lastProcessed)
             {
                 _pendingFingerprint = null;
+                _idleTicks++;
                 return;
             }
 
+            _idleTicks = 0;
+
             // The application knows its own text, so there is nothing to wait for and nothing
-            // to recognise: the words are published on the very frame that changed.
+            // to recognise: the words are published on the very frame that changed. Walking
+            // the automation tree is cheap but not free, so a window that keeps changing is
+            // read at a steady pace instead of on every refresh.
             if (settings.ReadTextDirectly && _textSource is { IsAvailable: true })
             {
+                if (_windowExposesText && _sinceDirectRead.Elapsed < DirectReadInterval)
+                    return;
+
+                _sinceDirectRead.Restart();
                 var exposed = _textSource.TryReadForegroundWindow();
+                _windowExposesText = exposed is { Count: > 0 };
+
                 if (exposed is { Count: > 0 })
                 {
                     _pendingFingerprint = null;
@@ -233,6 +356,15 @@ namespace ScreenSpell.Main
                 Publish(BuildIssues(cachedWords, settings), stabilize);
                 return;
             }
+
+            // Only now, with something actually worth recognising, is the window grabbed at
+            // full resolution.
+            var frame = settings.ScanActiveWindowOnly
+                ? _capture.CaptureActiveWindow()
+                : _capture.CaptureScreen();
+
+            if (frame is null)
+                return;
 
             var words = await RecognizeAsync(frame, settings, cancellationToken).ConfigureAwait(false);
             _lastWords = words;

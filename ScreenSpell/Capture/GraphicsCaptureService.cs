@@ -11,11 +11,24 @@ namespace ScreenSpell.Capture
     /// <summary>
     /// GDI (BitBlt) screen grabber. It is slower than Windows.Graphics.Capture but needs no
     /// capture picker, works on every Windows 10 build and never shows a yellow border.
+    ///
+    /// Bitmaps and pixel buffers are kept and reused between grabs: a full screen frame is
+    /// several megabytes, and allocating one on every refresh is what turns a watching loop
+    /// into a garbage collector benchmark. The consequence is that a returned
+    /// <see cref="ScreenFrame"/> is only valid until the next grab of the same kind, so a
+    /// caller that needs to keep pixels has to copy them.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public class GraphicsCaptureService : IScreenCaptureService
     {
         private const int DefaultRefreshRateHz = 60;
+
+        /// <summary>Longest side of a change-detection probe, in pixels.</summary>
+        private const int ProbeSize = 384;
+
+        private readonly object _gate = new();
+        private readonly Surface _full = new();
+        private readonly Surface _probe = new();
 
         public int RefreshRateHz
         {
@@ -43,6 +56,58 @@ namespace ScreenSpell.Capture
                 return null;
 
             return CaptureRegion(bounds.Value.X, bounds.Value.Y, bounds.Value.Width, bounds.Value.Height);
+        }
+
+        public ScreenFrame? CaptureProbe(bool activeWindowOnly)
+        {
+            Rectangle bounds;
+            if (activeWindowOnly)
+            {
+                var window = ForegroundWindowBounds();
+                if (window is null)
+                    return null;
+
+                bounds = window.Value;
+            }
+            else
+            {
+                bounds = Screen.PrimaryScreen?.Bounds ?? SystemInformation.VirtualScreen;
+            }
+
+            var scale = Math.Min(1.0, (double)ProbeSize / Math.Max(bounds.Width, bounds.Height));
+            var width = Math.Max(1, (int)(bounds.Width * scale));
+            var height = Math.Max(1, (int)(bounds.Height * scale));
+
+            lock (_gate)
+            {
+                var bitmap = _probe.BitmapOf(width, height);
+
+                using (var graphics = Graphics.FromImage(bitmap))
+                {
+                    var screen = NativeMethods.CreateDC("DISPLAY", null, null, IntPtr.Zero);
+                    if (screen == IntPtr.Zero)
+                        return null;
+
+                    var target = graphics.GetHdc();
+                    try
+                    {
+                        NativeMethods.SetStretchBltMode(target, NativeMethods.HalfTone);
+                        NativeMethods.StretchBlt(
+                            target, 0, 0, width, height,
+                            screen, bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                            NativeMethods.SrcCopy);
+                    }
+                    finally
+                    {
+                        graphics.ReleaseHdc(target);
+                        NativeMethods.DeleteDC(screen);
+                    }
+                }
+
+                // The probe carries the bounds of what it stands for, so the caller can still
+                // tell that the window moved or was resized without grabbing it in full.
+                return _probe.Read(bitmap, bounds.X, bounds.Y);
+            }
         }
 
         /// <summary>Grabs every monitor of the virtual desktop in one frame.</summary>
@@ -90,26 +155,55 @@ namespace ScreenSpell.Capture
             if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
             if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
 
-            using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-            using (var graphics = Graphics.FromImage(bitmap))
+            lock (_gate)
             {
-                graphics.CopyFromScreen(x, y, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
+                var bitmap = _full.BitmapOf(width, height);
+
+                using (var graphics = Graphics.FromImage(bitmap))
+                {
+                    graphics.CopyFromScreen(x, y, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
+                }
+
+                return _full.Read(bitmap, x, y);
+            }
+        }
+
+        /// <summary>A bitmap and its pixel buffer, both grown on demand and then reused.</summary>
+        private sealed class Surface
+        {
+            private Bitmap? _bitmap;
+            private byte[] _pixels = Array.Empty<byte>();
+
+            public Bitmap BitmapOf(int width, int height)
+            {
+                if (_bitmap is { } existing && existing.Width == width && existing.Height == height)
+                    return existing;
+
+                _bitmap?.Dispose();
+                _bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+                return _bitmap;
             }
 
-            var data = bitmap.LockBits(
-                new Rectangle(0, 0, width, height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format32bppArgb);
+            public ScreenFrame Read(Bitmap bitmap, int originX, int originY)
+            {
+                var data = bitmap.LockBits(
+                    new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                    ImageLockMode.ReadOnly,
+                    PixelFormat.Format32bppArgb);
 
-            try
-            {
-                var pixels = new byte[data.Stride * height];
-                Marshal.Copy(data.Scan0, pixels, 0, pixels.Length);
-                return new ScreenFrame(width, height, data.Stride, pixels, x, y);
-            }
-            finally
-            {
-                bitmap.UnlockBits(data);
+                try
+                {
+                    var length = data.Stride * bitmap.Height;
+                    if (_pixels.Length != length)
+                        _pixels = new byte[length];
+
+                    Marshal.Copy(data.Scan0, _pixels, 0, length);
+                    return new ScreenFrame(bitmap.Width, bitmap.Height, data.Stride, _pixels, originX, originY);
+                }
+                finally
+                {
+                    bitmap.UnlockBits(data);
+                }
             }
         }
 
@@ -118,6 +212,10 @@ namespace ScreenSpell.Capture
             public const int DwmwaExtendedFrameBounds = 9;
 
             public const int EnumCurrentSettings = -1;
+
+            public const int HalfTone = 4;
+
+            public const int SrcCopy = 0x00CC0020;
 
             [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
             public struct DevMode
@@ -181,6 +279,23 @@ namespace ScreenSpell.Capture
 
             [DllImport("dwmapi.dll")]
             public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attribute, out Rect value, int size);
+
+            [DllImport("gdi32.dll", CharSet = CharSet.Unicode)]
+            public static extern IntPtr CreateDC(string driver, string? device, string? output, IntPtr initData);
+
+            [DllImport("gdi32.dll")]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            public static extern bool DeleteDC(IntPtr hdc);
+
+            [DllImport("gdi32.dll")]
+            public static extern int SetStretchBltMode(IntPtr hdc, int mode);
+
+            [DllImport("gdi32.dll")]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            public static extern bool StretchBlt(
+                IntPtr destination, int x, int y, int width, int height,
+                IntPtr source, int sourceX, int sourceY, int sourceWidth, int sourceHeight,
+                int operation);
         }
     }
 }

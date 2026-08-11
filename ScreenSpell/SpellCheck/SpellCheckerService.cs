@@ -10,7 +10,7 @@ namespace ScreenSpell.SpellCheck
     /// ignore list, memoises results and delegates the actual decision to the configured
     /// engine (ONNX when a model is deployed, the word list otherwise).
     /// </summary>
-    public class SpellCheckerService : ISpellChecker
+    public class SpellCheckerService : ISpellChecker, IUserWordList
     {
         private readonly ISpellChecker _engine;
         private readonly SuggestionService _suggestions;

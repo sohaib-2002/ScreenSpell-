@@ -34,6 +34,27 @@ directly, and shrunk when it cannot:
 
 Both are checkboxes in the settings panel and take effect on the next scan, without a restart.
 
+Watching the screen is separated from reading it. Every tick grabs a downscaled probe (384 px
+on the long edge) and hashes it; a tick that finds the picture unchanged - which is nearly
+every tick while you read a page - never copies a full frame, never walks the automation tree
+and never redraws. The window is captured at full resolution only once there is something new
+to read, a pass that is still recognising is never joined by the next tick, and a screen that
+has been still for a while is probed a few times a second until it moves again.
+
+## Correcting from the overlay
+
+The squiggles are not just a report: right-click (or left-click) one and a small menu opens
+over the word with its corrections, *تجاهل الكلمة* and *إضافة إلى القاموس*, so nothing sends
+you back to the main window.
+
+Only the underline strip itself catches the mouse - a few pixels tall, under the word. The
+window region is rebuilt from the issues on every redraw, so every other click on the screen
+reaches the application below untouched, without the overlay forwarding anything.
+
+Picking a correction copies it to the clipboard, ready to paste over the word: the overlay
+cannot type into another application's window. *تجاهل* and *إضافة إلى القاموس* apply
+immediately, remove the underline, and are remembered in `settings.json`.
+
 ## OCR engines
 
 Pick one under **محرك القراءة** in the settings panel; the choice is applied when the app is
@@ -107,6 +128,7 @@ cannot be executed there.
 | استعادة الافتراضي | puts every setting above back to its default |
 | تجاهل | ignores the word for this session |
 | إضافة إلى القاموس | adds the word to your dictionary, permanently |
+| نقرة يمين على الخط الأحمر | opens the corrections menu over the word, on the overlay itself |
 
 Every setting in `settings.json` that is worth changing is editable from the *الإعدادات* panel;
 the two toolbar checkboxes are saved as soon as you click them, the rest on *حفظ الإعدادات*.

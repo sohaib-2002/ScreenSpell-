@@ -17,6 +17,15 @@ namespace ScreenSpell.Core.Interfaces
         /// </summary>
         ScreenFrame? CaptureActiveWindow();
 
+        /// <summary>
+        /// A heavily downscaled copy of what <see cref="CaptureActiveWindow"/> or
+        /// <see cref="CaptureScreen"/> would return, meant only for noticing that the screen
+        /// changed. It costs a fraction of a full grab, which is what makes it affordable to
+        /// look at the screen on every refresh. Returns null in the same cases as
+        /// <see cref="CaptureActiveWindow"/>.
+        /// </summary>
+        ScreenFrame? CaptureProbe(bool activeWindowOnly);
+
         /// <summary>Grabs a rectangle of the virtual desktop as a BGRA frame.</summary>
         ScreenFrame CaptureRegion(int x, int y, int width, int height);
     }
