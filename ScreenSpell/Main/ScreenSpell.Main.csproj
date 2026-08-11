@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Core\ScreenSpell.Core.csproj" />
+    <ProjectReference Include="..\Automation\ScreenSpell.Automation.csproj" />
     <ProjectReference Include="..\Capture\ScreenSpell.Capture.csproj" />
     <ProjectReference Include="..\OCR\ScreenSpell.OCR.csproj" />
     <ProjectReference Include="..\SpellCheck\ScreenSpell.SpellCheck.csproj" />

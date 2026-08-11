@@ -14,12 +14,14 @@ namespace ScreenSpell.Main
         private readonly ISettingsService _settings;
         private readonly SpellCheckerService _spellChecker;
         private readonly IOcrProvider _ocr;
+        private readonly ITextSource? _textSource;
 
         public MainWindow(
             ScanService scanService,
             ISettingsService settings,
             SpellCheckerService spellChecker,
-            IOcrProvider ocr)
+            IOcrProvider ocr,
+            ITextSource? textSource = null)
         {
             InitializeComponent();
 
@@ -27,15 +29,20 @@ namespace ScreenSpell.Main
             _settings = settings;
             _spellChecker = spellChecker;
             _ocr = ocr;
+            _textSource = textSource;
 
             _scanService.IssuesUpdated += OnIssuesUpdated;
             _scanService.StatusChanged += OnStatusChanged;
 
             LoadSettingsIntoUi();
 
-            EngineText.Text = _ocr.IsAvailable
+            var reader = _ocr.IsAvailable
                 ? $"محرك التعرف الضوئي: {DescribeEngine(_ocr)}"
                 : "محرك التعرف الضوئي غير متاح - ثبّت حزمة اللغة العربية (الإعدادات > الوقت واللغة)";
+
+            EngineText.Text = _settings.Settings.ReadTextDirectly && _textSource is { IsAvailable: true }
+                ? $"قراءة لحظية من التطبيقات مفعّلة — {reader}"
+                : reader;
 
             if (_settings.Settings.StartScanningOnLaunch)
                 StartScanning();
@@ -88,6 +95,8 @@ namespace ScreenSpell.Main
             ActiveWindowCheckBox.IsChecked = settings.ScanActiveWindowOnly;
             RefreshSyncCheckBox.IsChecked = settings.SyncToRefreshRate;
             EnhanceCheckBox.IsChecked = settings.EnhanceContrast;
+            DirectTextCheckBox.IsChecked = settings.ReadTextDirectly;
+            IncrementalCheckBox.IsChecked = settings.IncrementalScan;
             SelectEngine(settings.OcrEngine);
             StartOnLaunchCheckBox.IsChecked = settings.StartScanningOnLaunch;
             TrayCheckBox.IsChecked = settings.MinimizeToTray;
@@ -182,6 +191,8 @@ namespace ScreenSpell.Main
                 settings.ScanActiveWindowOnly = ActiveWindowCheckBox.IsChecked == true;
                 settings.SyncToRefreshRate = RefreshSyncCheckBox.IsChecked == true;
                 settings.EnhanceContrast = EnhanceCheckBox.IsChecked == true;
+                settings.ReadTextDirectly = DirectTextCheckBox.IsChecked == true;
+                settings.IncrementalScan = IncrementalCheckBox.IsChecked == true;
 
                 var engine = SelectedEngine();
                 needsRestart |= engine != settings.OcrEngine;
@@ -207,6 +218,8 @@ namespace ScreenSpell.Main
                 settings.MinTextHeight = defaults.MinTextHeight;
                 settings.SyncToRefreshRate = defaults.SyncToRefreshRate;
                 settings.EnhanceContrast = defaults.EnhanceContrast;
+                settings.ReadTextDirectly = defaults.ReadTextDirectly;
+                settings.IncrementalScan = defaults.IncrementalScan;
                 settings.OcrEngine = defaults.OcrEngine;
                 settings.StabilityFrames = defaults.StabilityFrames;
                 settings.MinWordLength = defaults.MinWordLength;

@@ -85,6 +85,10 @@
                               ToolTip="يُراقب المحتوى بمعدل تحديث الشاشة ويُشغّل القراءة فور استقرار الصورة بدل الانتظار زمنًا ثابتًا." />
                     <CheckBox x:Name="EnhanceCheckBox" Content="تحسين الصورة قبل القراءة" VerticalAlignment="Center" Margin="0,0,16,0"
                               ToolTip="تحويل إلى تدرج رمادي مع رفع التباين، ويقلّل خلط الحروف مثل ق/م." />
+                    <CheckBox x:Name="DirectTextCheckBox" Content="قراءة لحظية من التطبيقات" VerticalAlignment="Center" Margin="0,0,16,0"
+                              ToolTip="أخذ النص مباشرة من التطبيق عبر UI Automation بدل تصويره: فوري وبلا أخطاء قراءة، ويعود إلى التعرف الضوئي في النوافذ التي لا تكشف نصها (الصور والألعاب وسطح المكتب البعيد)." />
+                    <CheckBox x:Name="IncrementalCheckBox" Content="قراءة الجزء المتغيّر فقط" VerticalAlignment="Center" Margin="0,0,16,0"
+                              ToolTip="عند تعذّر القراءة المباشرة، يُعاد التعرف على المنطقة التي أُعيد رسمها فقط وتُدمج مع الكلمات المعروفة، فتظهر الكلمة أثناء الكتابة بدل انتظار مسحة كاملة." />
                     <CheckBox x:Name="StartOnLaunchCheckBox" Content="بدء التدقيق عند فتح التطبيق" VerticalAlignment="Center" Margin="0,0,16,0" />
                     <CheckBox x:Name="TrayCheckBox" Content="الإخفاء إلى شريط المهام عند الإغلاق" VerticalAlignment="Center" Margin="0,0,16,0" />
                     <Button Content="حفظ الإعدادات" Padding="12,4" Click="SaveSettingsButton_Click" />

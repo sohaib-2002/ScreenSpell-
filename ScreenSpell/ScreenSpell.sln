@@ -26,6 +26,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScreenSpell.Tests", "Tests\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScreenSpell.Engines", "Engines\ScreenSpell.Engines.csproj", "{77528A14-0235-49F1-897C-B9BE241E8B6C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScreenSpell.Automation", "Automation\ScreenSpell.Automation.csproj", "{F19CC483-918D-4220-8FF8-B314701E72A8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -80,6 +82,10 @@ Global
 		{77528A14-0235-49F1-897C-B9BE241E8B6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{77528A14-0235-49F1-897C-B9BE241E8B6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{77528A14-0235-49F1-897C-B9BE241E8B6C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F19CC483-918D-4220-8FF8-B314701E72A8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F19CC483-918D-4220-8FF8-B314701E72A8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F19CC483-918D-4220-8FF8-B314701E72A8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F19CC483-918D-4220-8FF8-B314701E72A8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

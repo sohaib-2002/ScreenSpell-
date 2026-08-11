@@ -3,26 +3,35 @@ using ScreenSpell.Cache;
 using ScreenSpell.Core.Interfaces;
 using ScreenSpell.Core.Models;
 using ScreenSpell.Core.Services;
+using ScreenSpell.Engines;
 using ScreenSpell.Text;
 
 namespace ScreenSpell.Main
 {
     /// <summary>
-    /// The scan loop: watch the screen, OCR it, spell check every word and hand the issues to
+    /// The scan loop: watch the screen, read it, spell check every word and hand the issues to
     /// the overlay. The screen is probed at its refresh rate but only fingerprinted, so the
     /// expensive part runs when the picture actually changed and then settled, instead of on
     /// a fixed timer that is either late or wasteful.
+    ///
+    /// Reading has three speeds, cheapest first: the application is asked for its text through
+    /// UI Automation, which is instant and exact; failing that only the repainted part of the
+    /// window is recognised and merged with the words already known; and only a move, a resize
+    /// or a full repaint costs a whole-window recognition.
     /// </summary>
     public sealed class ScanService : IDisposable
     {
         private readonly IScreenCaptureService _capture;
         private readonly IOcrProvider _ocr;
+        private readonly ITextSource? _textSource;
         private readonly ISpellChecker _spellChecker;
         private readonly IOverlayService _overlay;
         private readonly OcrCache _ocrCache;
         private readonly ISettingsService _settings;
         private readonly ILogger<ScanService> _logger;
         private readonly IssueStabilizer _stabilizer = new();
+        private readonly DirtyRegionTracker _dirtyRegions = new();
+        private IReadOnlyList<OcrWord> _lastWords = Array.Empty<OcrWord>();
 
         private CancellationTokenSource? _cancellation;
         private Task? _loop;
@@ -39,10 +48,12 @@ namespace ScreenSpell.Main
             IOverlayService overlay,
             OcrCache ocrCache,
             ISettingsService settings,
-            ILogger<ScanService> logger)
+            ILogger<ScanService> logger,
+            ITextSource? textSource = null)
         {
             _capture = capture;
             _ocr = ocr;
+            _textSource = textSource;
             _spellChecker = spellChecker;
             _overlay = overlay;
             _ocrCache = ocrCache;
@@ -61,13 +72,14 @@ namespace ScreenSpell.Main
             if (IsScanning)
                 return;
 
-            if (!_ocr.IsAvailable)
+            if (!_ocr.IsAvailable && !(_settings.Settings.ReadTextDirectly && _textSource is { IsAvailable: true }))
             {
                 Report("محرك التعرف الضوئي غير متاح. ثبّت حزمة اللغة العربية من إعدادات Windows.");
                 return;
             }
 
             _stabilizer.Reset();
+            _dirtyRegions.Reset();
             _refreshRateHz = Math.Clamp(_capture.RefreshRateHz, 24, 360);
             _cancellation = new CancellationTokenSource();
             _loop = Task.Run(() => RunAsync(_cancellation.Token));
@@ -78,6 +90,8 @@ namespace ScreenSpell.Main
         {
             _cancellation?.Cancel();
             _stabilizer.Reset();
+            _dirtyRegions.Reset();
+            _lastWords = Array.Empty<OcrWord>();
             _lastRendered = string.Empty;
             _lastRegion = string.Empty;
             _lastProcessed = string.Empty;
@@ -90,6 +104,7 @@ namespace ScreenSpell.Main
         public async Task ScanOnceAsync(CancellationToken cancellationToken = default)
         {
             _ocrCache.Invalidate();
+            _dirtyRegions.Reset();
             _lastProcessed = string.Empty;
             await ScanAsync(cancellationToken, stabilize: false, requireSettled: false).ConfigureAwait(false);
         }
@@ -164,19 +179,43 @@ namespace ScreenSpell.Main
                 _stabilizer.Reset();
                 _lastRendered = string.Empty;
                 _lastProcessed = string.Empty;
+                _lastWords = Array.Empty<OcrWord>();
                 _ocrCache.Invalidate();
+                _dirtyRegions.Reset();
                 _overlay.Clear();
             }
 
             var fingerprint = OcrCache.FingerprintOf(frame);
-            if (requireSettled)
+            if (fingerprint == _lastProcessed)
             {
-                if (fingerprint == _lastProcessed)
+                _pendingFingerprint = null;
+                return;
+            }
+
+            // The application knows its own text, so there is nothing to wait for and nothing
+            // to recognise: the words are published on the very frame that changed.
+            if (settings.ReadTextDirectly && _textSource is { IsAvailable: true })
+            {
+                var exposed = _textSource.TryReadForegroundWindow();
+                if (exposed is { Count: > 0 })
                 {
                     _pendingFingerprint = null;
+                    _lastProcessed = fingerprint;
+                    _lastWords = exposed;
+                    _dirtyRegions.Reset();
+
+                    // Exact text does not flicker between two passes, so there is nothing to
+                    // smooth out and the underline appears on the frame the word was typed in.
+                    Publish(BuildIssues(exposed, settings), stabilize: false);
                     return;
                 }
+            }
 
+            if (!_ocr.IsAvailable)
+                return;
+
+            if (requireSettled)
+            {
                 // Recognising a frame while the window is still scrolling or animating only
                 // produces garbage, so wait until two probes in a row look the same.
                 if (fingerprint != _pendingFingerprint)
@@ -195,11 +234,45 @@ namespace ScreenSpell.Main
                 return;
             }
 
-            var source = settings.EnhanceContrast ? FramePreprocessor.Enhance(frame) : frame;
-            var words = await _ocr.ExtractTextAsync(source, cancellationToken).ConfigureAwait(false);
+            var words = await RecognizeAsync(frame, settings, cancellationToken).ConfigureAwait(false);
+            _lastWords = words;
             _ocrCache.UpdateCache(words);
 
             Publish(BuildIssues(words, settings), stabilize);
+        }
+
+        /// <summary>
+        /// Recognises the frame, or just the repainted part of it. Typing a word repaints a
+        /// couple of lines, and reading those costs a fraction of a full window pass, so the
+        /// underline follows the caret instead of arriving a scan later.
+        /// </summary>
+        private async Task<List<OcrWord>> RecognizeAsync(
+            ScreenFrame frame,
+            AppSettings settings,
+            CancellationToken cancellationToken)
+        {
+            var dirty = settings.IncrementalScan ? _dirtyRegions.Track(frame) : null;
+            var partial = dirty is { } region
+                          && _lastWords.Count > 0
+                          && (region.Width < frame.Width || region.Height < frame.Height);
+
+            var target = partial
+                ? ImageOps.Crop(frame, dirty!.Value.X, dirty.Value.Y, dirty.Value.Width, dirty.Value.Height)
+                : frame;
+
+            var source = settings.EnhanceContrast ? FramePreprocessor.Enhance(target) : target;
+            var words = await _ocr.ExtractTextAsync(source, cancellationToken).ConfigureAwait(false);
+
+            if (!partial)
+                return words;
+
+            var desktopRegion = new PixelRect(
+                frame.OriginX + dirty!.Value.X,
+                frame.OriginY + dirty.Value.Y,
+                dirty.Value.Width,
+                dirty.Value.Height);
+
+            return DirtyRegionTracker.Merge(_lastWords, words, desktopRegion);
         }
 
         private List<SpellIssue> BuildIssues(IEnumerable<OcrWord> words, AppSettings settings)

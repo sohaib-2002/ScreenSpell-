@@ -16,6 +16,24 @@ your personal dictionary.
   Without it the app starts but the status bar reports that OCR is unavailable.
   The Tesseract and PaddleOCR engines below need no language pack at all.
 
+## How the screen is read
+
+OCR is the slow part of the loop, so it is avoided whenever the application can be asked
+directly, and shrunk when it cannot:
+
+1. **قراءة لحظية من التطبيقات** (`ReadTextDirectly`, on by default) — the text of the window in
+   front is taken from UI Automation instead of from a picture of it. It is exact (no misread
+   letters at all), takes microseconds, and works with browsers, Office, editors and most
+   Windows controls. Password fields are skipped. Windows that expose nothing (games, images,
+   canvas-drawn pages, remote desktops) return no text and fall through to OCR.
+2. **قراءة الجزء المتغيّر فقط** (`IncrementalScan`, on by default) — when OCR is needed, only
+   the part of the window that was repainted since the last pass is recognised, and the fresh
+   words are merged with the ones already known outside that area. Typing a word therefore
+   costs a couple of lines instead of a whole window. The first pass, a window move or resize,
+   and a repaint covering most of the frame all fall back to reading everything.
+
+Both are checkboxes in the settings panel and take effect on the next scan, without a restart.
+
 ## OCR engines
 
 Pick one under **محرك القراءة** in the settings panel; the choice is applied when the app is
@@ -74,6 +92,8 @@ cannot be executed there.
 | أقل ارتفاع للنص | words drawn smaller than this many pixels are skipped (0 = no limit) |
 | المزامنة مع معدل تحديث الشاشة | probes the screen every refresh and recognises as soon as it settles |
 | تحسين الصورة قبل القراءة | grey scale and contrast stretch, fewer misread letters |
+| قراءة لحظية من التطبيقات | takes the text from the application through UI Automation, OCR only as a fallback |
+| قراءة الجزء المتغيّر فقط | re-reads just the repainted area and keeps the rest of the words |
 | إظهار الطبقة فوق الشاشة | toggles the on-screen squiggles |
 | النافذة النشطة فقط | scans only the window in front, which is much faster |
 | إطارات التثبيت | consecutive scans before a word is underlined (1 disables the smoothing) |
@@ -106,6 +126,8 @@ Settings live in `%LOCALAPPDATA%\ScreenSpell\settings.json` and are written when
   "ScanActiveWindowOnly": true,  // scan the foreground window instead of the whole screen
   "MinTextHeight": 9,            // words drawn smaller than this many pixels are ignored
   "EnhanceContrast": true,       // grey scale + contrast stretch before recognition
+  "ReadTextDirectly": true,      // ask the application for its text (UI Automation) before any OCR
+  "IncrementalScan": true,       // when OCR is needed, recognise only the repainted area
   "OcrEngine": "Windows",        // Windows | Tesseract | Paddle (applied at startup)
   "OcrScale": 2.0,               // frame is enlarged this much before OCR (1 = off, applied at startup)
   "Language": "ar",              // primary OCR language tag
@@ -168,6 +190,7 @@ supported path.
 | `Capture` | net8.0-windows | GDI screen capture into a `ScreenFrame` |
 | `OCR` | net8.0-windows10.0.19041.0 | `Windows.Media.Ocr` provider |
 | `Engines` | net8.0 | Tesseract 5 and PaddleOCR providers with their bundled models |
+| `Automation` | net8.0-windows | UI Automation text source, the OCR-free reading path |
 | `Overlay` | net8.0-windows | transparent click-through squiggle overlay |
 | `Tray` | net8.0-windows | notification area icon and menu |
 | `Main` | net8.0-windows10.0.19041.0 | WPF shell, DI host, scan loop |

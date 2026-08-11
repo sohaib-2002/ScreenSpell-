@@ -3,6 +3,7 @@ using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ScreenSpell.Automation;
 using ScreenSpell.Cache;
 using ScreenSpell.Capture;
 using ScreenSpell.Core.Interfaces;
@@ -62,6 +63,7 @@ namespace ScreenSpell.Main
                     services.AddSingleton<ISpellChecker>(sp => sp.GetRequiredService<SpellCheckerService>());
 
                     services.AddSingleton<IOcrProvider>(BuildOcrProvider);
+                    services.AddSingleton<ITextSource, UiAutomationTextSource>();
                     services.AddSingleton<IScreenCaptureService, GraphicsCaptureService>();
                     services.AddSingleton<IOverlayService>(_ => new OverlayService(Current.Dispatcher));
                     services.AddSingleton<SpellCache>();

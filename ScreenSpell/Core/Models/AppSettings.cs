@@ -26,6 +26,19 @@ namespace ScreenSpell.Core.Models
         /// </summary>
         public double MinTextHeight { get; set; } = 9;
 
+        /// <summary>
+        /// Ask the application in front for its text through UI Automation instead of reading a
+        /// picture of it. It is instant and never misreads a letter, and the screen is only
+        /// recognised for the windows that expose nothing (games, images, remote desktops).
+        /// </summary>
+        public bool ReadTextDirectly { get; set; } = true;
+
+        /// <summary>
+        /// Recognise only the part of the window that was repainted since the last pass, which
+        /// is what makes a typed word appear while the rest of the page keeps its underlines.
+        /// </summary>
+        public bool IncrementalScan { get; set; } = true;
+
         /// <summary>Convert to grey and stretch the contrast before recognition.</summary>
         public bool EnhanceContrast { get; set; } = true;
 
@@ -89,6 +102,8 @@ namespace ScreenSpell.Core.Models
             ScanIntervalMs = ScanIntervalMs,
             ScanActiveWindowOnly = ScanActiveWindowOnly,
             MinTextHeight = MinTextHeight,
+            ReadTextDirectly = ReadTextDirectly,
+            IncrementalScan = IncrementalScan,
             EnhanceContrast = EnhanceContrast,
             OcrEngine = OcrEngine,
             OcrScale = OcrScale,
