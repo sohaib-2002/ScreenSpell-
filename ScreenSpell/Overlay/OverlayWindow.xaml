@@ -1,0 +1,10 @@
+<Window x:Class="ScreenSpell.Overlay.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" Focusable="False"
+        ResizeMode="NoResize" WindowStartupLocation="Manual"
+        SourceInitialized="Window_SourceInitialized">
+    <Canvas x:Name="OverlayCanvas" Background="Transparent"
+            MouseRightButtonUp="Canvas_MouseUp" MouseLeftButtonUp="Canvas_MouseUp" />
+</Window>

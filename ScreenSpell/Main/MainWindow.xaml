@@ -1,0 +1,132 @@
+<Window x:Class="ScreenSpell.Main.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ScreenSpell.Main"
+        mc:Ignorable="d"
+        Title="ScreenSpell - التدقيق الإملائي على الشاشة"
+        Height="640" Width="980" FlowDirection="RightToLeft" FontSize="14">
+    <DockPanel Margin="12">
+        <ToolBarTray DockPanel.Dock="Top" Background="Transparent">
+            <ToolBar>
+                <Button x:Name="StartButton" Content="بدء التدقيق" Padding="10,4" Click="StartButton_Click" />
+                <Button x:Name="StopButton" Content="إيقاف" Padding="10,4" Click="StopButton_Click" IsEnabled="False" />
+                <Separator />
+                <Button x:Name="ScanOnceButton" Content="فحص الآن" Padding="10,4" Click="ScanOnceButton_Click" />
+                <Separator />
+                <CheckBox x:Name="OverlayCheckBox" Content="إظهار الطبقة فوق الشاشة" VerticalAlignment="Center" Margin="8,0" Click="QuickToggle_Click" />
+                <CheckBox x:Name="ActiveWindowCheckBox" Content="النافذة النشطة فقط" VerticalAlignment="Center" Margin="0,0,8,0" Click="QuickToggle_Click" />
+            </ToolBar>
+        </ToolBarTray>
+
+        <Expander DockPanel.Dock="Top" Header="الإعدادات" IsExpanded="True" Margin="0,8,0,0">
+            <Grid Margin="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="الفاصل الزمني (ملّي ثانية):" VerticalAlignment="Center" Margin="0,4" />
+                <TextBox x:Name="IntervalBox" Grid.Row="0" Grid.Column="1" Margin="4"
+                         ToolTip="يُستخدم فقط عند إلغاء المزامنة مع معدل تحديث الشاشة. أقل قيمة 200." />
+
+                <TextBlock Grid.Row="0" Grid.Column="3" Text="أقل ارتفاع للنص (بكسل):" VerticalAlignment="Center" Margin="0,4" />
+                <TextBox x:Name="MinTextHeightBox" Grid.Row="0" Grid.Column="4" Margin="4"
+                         ToolTip="تُتجاهل الكلمات المرسومة بخط أصغر من هذا الارتفاع، لأن القراءة تكون غير موثوقة عندها. 0 = بلا حد." />
+
+                <TextBlock Grid.Row="0" Grid.Column="6" Text="إطارات التثبيت:" VerticalAlignment="Center" Margin="0,4" />
+                <TextBox x:Name="StabilityBox" Grid.Row="0" Grid.Column="7" Width="90" HorizontalAlignment="Left" Margin="4"
+                         ToolTip="عدد المسحات المتتالية قبل رسم الخط تحت الكلمة. 1 = فوري بلا تأخير لكن قد يعود الوميض." />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="أقل طول للكلمة:" VerticalAlignment="Center" Margin="0,4" />
+                <TextBox x:Name="MinWordLengthBox" Grid.Row="1" Grid.Column="1" Margin="4"
+                         ToolTip="الكلمات الأقصر من هذا الطول لا يتم تدقيقها إطلاقًا." />
+
+                <TextBlock Grid.Row="1" Grid.Column="3" Text="عدد الاقتراحات:" VerticalAlignment="Center" Margin="0,4" />
+                <TextBox x:Name="MaxSuggestionsBox" Grid.Row="1" Grid.Column="4" Margin="4"
+                         ToolTip="أقصى عدد اقتراحات تصحيح تظهر لكل كلمة." />
+
+                <TextBlock Grid.Row="1" Grid.Column="6" Text="تكبير الصورة قبل القراءة:" VerticalAlignment="Center" Margin="0,4" />
+                <TextBox x:Name="OcrScaleBox" Grid.Row="1" Grid.Column="7" Width="90" HorizontalAlignment="Left" Margin="4"
+                         ToolTip="1 = بلا تكبير، 2 موصى بها، 3 لنص صغير جدًا. يتطلب إعادة تشغيل التطبيق." />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="لغة القراءة:" VerticalAlignment="Center" Margin="0,4" />
+                <TextBox x:Name="LanguageBox" Grid.Row="2" Grid.Column="1" Margin="4"
+                         ToolTip="رمز اللغة الأساسية للتعرف الضوئي، مثل ar. يتطلب إعادة تشغيل التطبيق." />
+
+                <TextBlock Grid.Row="2" Grid.Column="3" Text="لغات إضافية:" VerticalAlignment="Center" Margin="0,4" />
+                <TextBox x:Name="AdditionalLanguagesBox" Grid.Row="2" Grid.Column="4" Grid.ColumnSpan="4" Margin="4"
+                         ToolTip="رموز لغات إضافية مفصولة بفاصلة، مثل en. يجب أن تكون حزمة اللغة مثبّتة. يتطلب إعادة تشغيل التطبيق." />
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="محرك القراءة:" VerticalAlignment="Center" Margin="0,4" />
+                <ComboBox x:Name="OcrEngineBox" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="4" Margin="4" HorizontalAlignment="Left" MinWidth="220"
+                          ToolTip="Windows OCR سريع ويحتاج حزمة اللغة، وTesseract وPaddleOCR يعملان بنماذج مضمّنة بلا حزم لغة. يتطلب إعادة تشغيل التطبيق.">
+                    <ComboBoxItem Content="Windows OCR (الأسرع)" Tag="Windows" />
+                    <ComboBoxItem Content="Tesseract 5 (نماذج مضمّنة)" Tag="Tesseract" />
+                    <ComboBoxItem Content="PaddleOCR (الأدق للعربية)" Tag="Paddle" />
+                </ComboBox>
+
+                <WrapPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="8" Orientation="Horizontal" Margin="0,8,0,0">
+                    <CheckBox x:Name="RefreshSyncCheckBox" Content="المزامنة مع معدل تحديث الشاشة" VerticalAlignment="Center" Margin="0,0,16,0"
+                              ToolTip="يُراقب المحتوى بمعدل تحديث الشاشة ويُشغّل القراءة فور استقرار الصورة بدل الانتظار زمنًا ثابتًا." />
+                    <CheckBox x:Name="EnhanceCheckBox" Content="تحسين الصورة قبل القراءة" VerticalAlignment="Center" Margin="0,0,16,0"
+                              ToolTip="تحويل إلى تدرج رمادي مع رفع التباين، ويقلّل خلط الحروف مثل ق/م." />
+                    <CheckBox x:Name="DirectTextCheckBox" Content="قراءة لحظية من التطبيقات" VerticalAlignment="Center" Margin="0,0,16,0"
+                              ToolTip="أخذ النص مباشرة من التطبيق عبر UI Automation بدل تصويره: فوري وبلا أخطاء قراءة، ويعود إلى التعرف الضوئي في النوافذ التي لا تكشف نصها (الصور والألعاب وسطح المكتب البعيد)." />
+                    <CheckBox x:Name="IncrementalCheckBox" Content="قراءة الجزء المتغيّر فقط" VerticalAlignment="Center" Margin="0,0,16,0"
+                              ToolTip="عند تعذّر القراءة المباشرة، يُعاد التعرف على المنطقة التي أُعيد رسمها فقط وتُدمج مع الكلمات المعروفة، فتظهر الكلمة أثناء الكتابة بدل انتظار مسحة كاملة." />
+                    <CheckBox x:Name="StartOnLaunchCheckBox" Content="بدء التدقيق عند فتح التطبيق" VerticalAlignment="Center" Margin="0,0,16,0" />
+                    <CheckBox x:Name="TrayCheckBox" Content="الإخفاء إلى شريط المهام عند الإغلاق" VerticalAlignment="Center" Margin="0,0,16,0" />
+                    <Button Content="حفظ الإعدادات" Padding="12,4" Click="SaveSettingsButton_Click" />
+                    <Button Content="استعادة الافتراضي" Padding="12,4" Margin="8,0,0,0" Click="ResetSettingsButton_Click" />
+                    <TextBlock Text="التكبير واللغات تُطبَّق بعد إعادة تشغيل التطبيق" Foreground="Gray" VerticalAlignment="Center" Margin="12,0,0,0" />
+                </WrapPanel>
+            </Grid>
+        </Expander>
+
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <TextBlock x:Name="StatusText" Text="جاهز" />
+            </StatusBarItem>
+            <StatusBarItem HorizontalAlignment="Left">
+                <TextBlock x:Name="EngineText" Foreground="Gray" />
+            </StatusBarItem>
+        </StatusBar>
+
+        <ListView x:Name="IssuesList" Margin="0,10,0,10">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="الكلمة" Width="180" DisplayMemberBinding="{Binding Word}" />
+                    <GridViewColumn Header="الاقتراحات" Width="360" DisplayMemberBinding="{Binding SuggestionText}" />
+                    <GridViewColumn Header="الثقة" Width="70" DisplayMemberBinding="{Binding Confidence, StringFormat=P0}" />
+                    <GridViewColumn Header="إجراءات" Width="200">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="تجاهل" Margin="2" Padding="8,2"
+                                            Tag="{Binding Word}" Click="IgnoreButton_Click" />
+                                    <Button Content="إضافة إلى القاموس" Margin="2" Padding="8,2"
+                                            Tag="{Binding Word}" Click="AddToDictionaryButton_Click" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                </GridView>
+            </ListView.View>
+        </ListView>
+    </DockPanel>
+</Window>

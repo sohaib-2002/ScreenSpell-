@@ -1,0 +1,315 @@
+using ScreenSpell.Cache;
+using ScreenSpell.Core.Models;
+using ScreenSpell.Core.Services;
+using ScreenSpell.Settings;
+using ScreenSpell.SpellCheck;
+using ScreenSpell.Text;
+using Xunit;
+
+namespace ScreenSpell.Tests
+{
+    public class ArabicNormalizerTests
+    {
+        [Theory]
+        [InlineData("مُحَمَّد", "محمد")]
+        [InlineData("الــكــتــاب", "الكتاب")]
+        [InlineData("إسلام", "اسلام")]
+        [InlineData("مصطفى", "مصطفي")]
+        [InlineData("١٢٣", "123")]
+        public void NormalizeStripsDiacriticsAndUnifiesLetters(string input, string expected) =>
+            Assert.Equal(expected, ArabicNormalizer.Normalize(input));
+
+        [Fact]
+        public void TrimPunctuationRemovesArabicAndLatinMarks() =>
+            Assert.Equal("كتاب", ArabicNormalizer.TrimPunctuation("«كتاب»،"));
+
+        [Fact]
+        public void IsArabicWordRejectsMixedTokens()
+        {
+            Assert.True(ArabicNormalizer.IsArabicWord("كتاب"));
+            Assert.False(ArabicNormalizer.IsArabicWord("book"));
+            Assert.False(ArabicNormalizer.IsArabicWord("كتابbook"));
+        }
+
+        [Theory]
+        [InlineData("كتاب", true)]
+        [InlineData("book", true)]
+        [InlineData("Book", false)]
+        [InlineData("HTTP", false)]
+        [InlineData("ScreenSpell", false)]
+        [InlineData("كتابbook", false)]
+        [InlineData("win32", false)]
+        [InlineData("https://vwm.facebookcom", false)]
+        [InlineData("facebook.com", false)]
+        [InlineData("name@host", false)]
+        [InlineData(@"C:\Users", false)]
+        public void IsCheckableWordKeepsSingleScriptWordsOnly(string input, bool expected) =>
+            Assert.Equal(expected, ArabicNormalizer.IsCheckableWord(input));
+
+        [Fact]
+        public void NormalizeLowerCasesLatinLettersSoLookupsAreCaseInsensitive() =>
+            Assert.Equal("book", ArabicNormalizer.Normalize("Book"));
+    }
+
+    public class IssueStabilizerTests
+    {
+        private static SpellIssue Issue(string word, double x = 10, double y = 20) => new()
+        {
+            Word = word,
+            BoundingBox = new BoundingBox(x, y, 40, 12),
+            Suggestions = new List<string>()
+        };
+
+        [Fact]
+        public void IssueIsHiddenUntilItIsSeenTwice()
+        {
+            var stabilizer = new IssueStabilizer();
+            var issues = new[] { Issue("مدرصة") };
+
+            Assert.Empty(stabilizer.Stabilize(issues, 2));
+            Assert.Single(stabilizer.Stabilize(issues, 2));
+        }
+
+        [Fact]
+        public void IssueSurvivesASingleMissingPass()
+        {
+            var stabilizer = new IssueStabilizer();
+            var issues = new[] { Issue("مدرصة") };
+            stabilizer.Stabilize(issues, 2);
+            stabilizer.Stabilize(issues, 2);
+
+            Assert.Single(stabilizer.Stabilize(Array.Empty<SpellIssue>(), 2));
+            Assert.Empty(stabilizer.Stabilize(Array.Empty<SpellIssue>(), 2));
+        }
+
+        [Fact]
+        public void SmallBoxJitterIsTreatedAsTheSameIssue()
+        {
+            var stabilizer = new IssueStabilizer();
+            stabilizer.Stabilize(new[] { Issue("مدرصة", x: 10) }, 2);
+
+            Assert.Single(stabilizer.Stabilize(new[] { Issue("مدرصة", x: 12) }, 2));
+        }
+
+        [Fact]
+        public void SmoothingIsOffWhenOneFrameIsRequested()
+        {
+            var stabilizer = new IssueStabilizer();
+            Assert.Single(stabilizer.Stabilize(new[] { Issue("مدرصة") }, 1));
+        }
+    }
+
+    public class EditDistanceTests
+    {
+        [Theory]
+        [InlineData("كتاب", "كتاب", 0)]
+        [InlineData("كتاب", "كتب", 1)]
+        [InlineData("كتاب", "كاتب", 1)]
+        [InlineData("مدرسة", "مدرسه", 1)]
+        public void ComputesExpectedDistance(string a, string b, int expected) =>
+            Assert.Equal(expected, EditDistance.Compute(a, b));
+
+        [Fact]
+        public void StopsEarlyWhenOverTheLimit() =>
+            Assert.True(EditDistance.Compute("كتاب", "الطائرة", maxDistance: 2) > 2);
+    }
+
+    public class ArabicDictionaryTests
+    {
+        private static ArabicDictionary Build(params string[] words)
+        {
+            var dictionary = new ArabicDictionary();
+            dictionary.AddRange(words);
+            return dictionary;
+        }
+
+        [Fact]
+        public void ContainsIgnoresDiacritics()
+        {
+            var dictionary = Build("كتاب");
+            Assert.True(dictionary.Contains("كِتَاب"));
+        }
+
+        [Fact]
+        public void ContainsWithAffixesPeelsCommonClitics()
+        {
+            var dictionary = Build("كتاب");
+            Assert.True(dictionary.ContainsWithAffixes("الكتاب"));
+            Assert.True(dictionary.ContainsWithAffixes("وكتابها"));
+            Assert.False(dictionary.ContainsWithAffixes("سيارة"));
+        }
+
+        [Fact]
+        public void CandidatesAreLimitedByLength()
+        {
+            var dictionary = Build("كتاب", "مستشفيات");
+            Assert.Contains("كتاب", dictionary.CandidatesFor("كتب", 2));
+            Assert.DoesNotContain("مستشفيات", dictionary.CandidatesFor("كتب", 2));
+        }
+    }
+
+    public class DictionarySpellCheckerTests
+    {
+        private static SpellCheckerService Build(params string[] words)
+        {
+            var dictionary = new ArabicDictionary();
+            dictionary.AddRange(words);
+            var suggestions = new SuggestionService();
+            var engine = new DictionarySpellChecker(dictionary, suggestions);
+            return new SpellCheckerService(engine, suggestions, new SpellCache());
+        }
+
+        [Fact]
+        public void KnownWordIsAccepted() =>
+            Assert.False(Build("مدرسة").CheckWord("مدرسة").IsError);
+
+        [Fact]
+        public void UnknownWordIsReportedWithTheClosestSuggestion()
+        {
+            var result = Build("مدرسة", "مدينة").CheckWord("مدرصة");
+
+            Assert.True(result.IsError);
+            Assert.Equal("مدرسة", result.Suggestions.First());
+        }
+
+        [Fact]
+        public void EnglishWordsAreCheckedAgainstTheSameWordList()
+        {
+            var checker = Build("مدرسة", "receive");
+
+            Assert.False(checker.CheckWord("Receive").IsError);
+            Assert.True(checker.CheckWord("recieve").IsError);
+        }
+
+        [Fact]
+        public void TwoWordsGluedTogetherByOcrAreAccepted()
+        {
+            var checker = Build("new", "item", "select");
+
+            Assert.False(checker.CheckWord("newitem").IsError);
+            Assert.True(checker.CheckWord("newxyzzy").IsError);
+        }
+
+        [Fact]
+        public void AcronymsAndMixedScriptTokensAreLeftAlone()
+        {
+            var checker = Build("مدرسة");
+
+            Assert.False(checker.CheckWord("HTTP").IsError);
+            Assert.False(checker.CheckWord("ScreenSpell").IsError);
+            Assert.False(checker.CheckWord("كتابbook").IsError);
+        }
+
+        [Fact]
+        public void AddToDictionaryClearsThePreviousVerdict()
+        {
+            var checker = Build("مدرسة");
+            Assert.True(checker.CheckWord("سوهيب").IsError);
+
+            checker.AddToDictionary("سوهيب");
+
+            Assert.False(checker.CheckWord("سوهيب").IsError);
+        }
+    }
+
+    public class OcrCacheTests
+    {
+        private static ScreenFrame Frame(byte fill)
+        {
+            var pixels = new byte[64 * 64 * 4];
+            Array.Fill(pixels, fill);
+            return new ScreenFrame(64, 64, 64 * 4, pixels);
+        }
+
+        [Fact]
+        public void SecondIdenticalFrameHitsTheCache()
+        {
+            var cache = new OcrCache();
+            Assert.False(cache.TryGetCachedFrame(Frame(0x10), out _));
+            cache.UpdateCache(new List<OcrWord> { new() { Text = "كتاب" } });
+
+            Assert.True(cache.TryGetCachedFrame(Frame(0x10), out var cached));
+            Assert.Single(cached);
+        }
+
+        [Fact]
+        public void ChangedFrameMissesTheCache()
+        {
+            var cache = new OcrCache();
+            cache.TryGetCachedFrame(Frame(0x10), out _);
+            Assert.False(cache.TryGetCachedFrame(Frame(0x20), out _));
+        }
+    }
+
+    public class FramePreprocessorTests
+    {
+        private static ScreenFrame Frame(params byte[] greys)
+        {
+            var pixels = new byte[greys.Length * 4];
+            for (var i = 0; i < greys.Length; i++)
+            {
+                pixels[i * 4] = greys[i];
+                pixels[i * 4 + 1] = greys[i];
+                pixels[i * 4 + 2] = greys[i];
+                pixels[i * 4 + 3] = 255;
+            }
+
+            return new ScreenFrame(greys.Length, 1, greys.Length * 4, pixels);
+        }
+
+        [Fact]
+        public void LowContrastTextIsStretchedToBlackAndWhite()
+        {
+            var enhanced = FramePreprocessor.Enhance(Frame(100, 100, 160, 160));
+
+            Assert.Equal(0, enhanced.Pixels[0]);
+            Assert.Equal(255, enhanced.Pixels[12]);
+        }
+
+        [Fact]
+        public void FlatFrameIsLeftAsItIs()
+        {
+            var enhanced = FramePreprocessor.Enhance(Frame(128, 128, 128, 128));
+
+            Assert.All(new[] { 0, 4, 8, 12 }, offset => Assert.Equal(128, enhanced.Pixels[offset]));
+        }
+
+        [Fact]
+        public void ColourIsReducedToItsLuminance()
+        {
+            var pixels = new byte[] { 0, 0, 255, 255, 255, 255, 255, 255 };
+            var enhanced = FramePreprocessor.Enhance(new ScreenFrame(2, 1, 8, pixels));
+
+            Assert.Equal(enhanced.Pixels[0], enhanced.Pixels[1]);
+            Assert.Equal(enhanced.Pixels[1], enhanced.Pixels[2]);
+            Assert.True(enhanced.Pixels[0] < enhanced.Pixels[4]);
+        }
+    }
+
+    public class ConfigurationManagerTests
+    {
+        [Fact]
+        public void SettingsRoundTripThroughDisk()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"screenspell-{Guid.NewGuid():N}.json");
+            try
+            {
+                var manager = new ConfigurationManager(settingsPath: path);
+                manager.Update(settings =>
+                {
+                    settings.ScanIntervalMs = 999;
+                    settings.UserDictionary.Add("سوهيب");
+                });
+
+                var reloaded = new ConfigurationManager(settingsPath: path);
+
+                Assert.Equal(999, reloaded.Settings.ScanIntervalMs);
+                Assert.Contains("سوهيب", reloaded.Settings.UserDictionary);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+    }
+}
