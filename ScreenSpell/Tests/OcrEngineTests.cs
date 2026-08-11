@@ -72,6 +72,52 @@ namespace ScreenSpell.Tests
             Assert.Contains("Signature", text);
         }
 
+        [Fact]
+        public void TheBundledModelsShipWithTheBuild()
+        {
+            Assert.True(File.Exists(Path.Combine(ModelDirectory, PaddleOcrProvider.DetectionModelFile)));
+            Assert.True(File.Exists(Path.Combine(ModelDirectory, PaddleOcrProvider.RecognitionModelFile)));
+            Assert.True(File.Exists(Path.Combine(ModelDirectory, PaddleOcrProvider.DictionaryFile)));
+            Assert.True(File.Exists(Path.Combine(ModelDirectory, PaddleOcrProvider.EnglishModelFile)));
+            Assert.True(File.Exists(Path.Combine(ModelDirectory, PaddleOcrProvider.EnglishDictionaryFile)));
+            Assert.True(File.Exists(Path.Combine(TessdataDirectory, "ara.traineddata")));
+            Assert.True(File.Exists(Path.Combine(TessdataDirectory, "eng.traineddata")));
+        }
+
+        /// <summary>
+        /// The English recogniser is optional: dropping it must leave the Arabic one reading
+        /// both scripts rather than turning the engine off.
+        /// </summary>
+        [Fact]
+        public async Task PaddleReadsLatinWithoutTheEnglishModel()
+        {
+            var directory = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+            Directory.CreateDirectory(directory);
+
+            try
+            {
+                foreach (var file in new[]
+                {
+                    PaddleOcrProvider.DetectionModelFile,
+                    PaddleOcrProvider.RecognitionModelFile,
+                    PaddleOcrProvider.DictionaryFile
+                })
+                {
+                    File.Copy(Path.Combine(ModelDirectory, file), Path.Combine(directory, file));
+                }
+
+                using var provider = new PaddleOcrProvider(new AppSettings(), null, directory);
+                Assert.True(provider.IsAvailable);
+
+                var words = await provider.ExtractTextAsync(Sample());
+                Assert.Contains("Signature", string.Join(' ', words.Select(word => word.Text)));
+            }
+            finally
+            {
+                Directory.Delete(directory, true);
+            }
+        }
+
         /// <summary>
         /// An engine that cannot load its models must stay quiet instead of throwing, because
         /// the application falls back to the Windows engine on <c>IsAvailable</c>.

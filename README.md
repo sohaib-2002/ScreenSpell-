@@ -59,21 +59,22 @@ immediately, remove the underline, and are remembered in `settings.json`.
 
 Pick one under **محرك القراءة** in the settings panel; the choice is applied when the app is
 restarted, and the status bar names the engine actually in use. Everything is offline, and
-the models ship inside the repository (`ScreenSpell/Engines/Models`, ~18 MB in total), so
+the models ship inside the repository (`ScreenSpell/Engines/Models`, ~49 MB in total), so
 there is nothing to download.
 
 | Engine | Setting value | Models | Notes |
 | --- | --- | --- | --- |
 | Windows OCR (default) | `Windows` | none | fastest, needs the language packs, no real per-word confidence and it misreads small text |
-| Tesseract 5 | `Tesseract` | `tessdata/ara.traineddata`, `tessdata/eng.traineddata` (5.5 MB) | no language pack needed, real confidence, slower |
-| PaddleOCR | `Paddle` | `paddle_det.onnx` (4.7 MB), `paddle_rec_arabic.onnx` (8 MB), `paddle_rec_arabic_dict.txt` | most accurate on Arabic, reads Latin in the same pass, heaviest on the CPU |
+| Tesseract 5 | `Tesseract` | `tessdata/ara.traineddata` (12.6 MB), `tessdata/eng.traineddata` (15.4 MB) | no language pack needed, real confidence, the most accurate reading and the slowest |
+| PaddleOCR | `Paddle` | `paddle_det.onnx` (4.7 MB), `paddle_rec_arabic.onnx` (8 MB), `paddle_rec_english.onnx` (7.8 MB) and their dictionaries | most accurate on Arabic, a Latin line is read again by the English model and the surer reading wins, heaviest on the CPU |
 
 The two offline engines read the enlarged frame like the Windows one does, and they only run
 once the picture has settled, so the cost is paid per screen change and not per refresh. When
 the selected engine cannot load its models the app logs a warning and falls back to Windows OCR.
 
-The bundled files are the upstream releases: `tessdata_fast` for Tesseract (Apache 2.0) and the
-PP-OCRv4 detector plus the PP-OCRv5 Arabic mobile recogniser exported to ONNX (Apache 2.0).
+The bundled files are the upstream releases: `tessdata_best` for Tesseract (Apache 2.0) and the
+PP-OCRv4 detector plus the PP-OCRv5 Arabic and English mobile recognisers exported to ONNX
+(Apache 2.0). The English recogniser is optional: without it the Arabic model reads Latin too.
 
 ## Build and run
 

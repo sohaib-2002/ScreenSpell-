@@ -18,6 +18,8 @@ namespace ScreenSpell.Engines
         public const string DetectionModelFile = "paddle_det.onnx";
         public const string RecognitionModelFile = "paddle_rec_arabic.onnx";
         public const string DictionaryFile = "paddle_rec_arabic_dict.txt";
+        public const string EnglishModelFile = "paddle_rec_english.onnx";
+        public const string EnglishDictionaryFile = "paddle_rec_english_dict.txt";
 
         private const int MaxDetectionSide = 2048;
         private const int RecognitionHeight = 48;
@@ -32,7 +34,9 @@ namespace ScreenSpell.Engines
         private readonly ILogger _logger;
         private readonly InferenceSession? _detection;
         private readonly InferenceSession? _recognition;
+        private readonly InferenceSession? _english;
         private readonly string[] _labels = Array.Empty<string>();
+        private readonly string[] _englishLabels = Array.Empty<string>();
         private readonly SemaphoreSlim _gate = new(1, 1);
 
         public PaddleOcrProvider(
@@ -66,14 +70,27 @@ namespace ScreenSpell.Engines
                 _detection = new InferenceSession(detectionPath, options);
                 _recognition = new InferenceSession(recognitionPath, options);
                 _labels = LoadLabels(dictionaryPath);
+
+                // The Arabic recogniser knows the Latin alphabet too, but a model trained on
+                // nothing else reads it better; it is optional, and only Latin lines pay for it.
+                var englishPath = Path.Combine(directory, EnglishModelFile);
+                var englishDictionaryPath = Path.Combine(directory, EnglishDictionaryFile);
+
+                if (File.Exists(englishPath) && File.Exists(englishDictionaryPath))
+                {
+                    _english = new InferenceSession(englishPath, options);
+                    _englishLabels = LoadLabels(englishDictionaryPath);
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Could not load the PP-OCR models from {Directory}.", directory);
                 _detection?.Dispose();
                 _recognition?.Dispose();
+                _english?.Dispose();
                 _detection = null;
                 _recognition = null;
+                _english = null;
             }
         }
 
@@ -278,13 +295,54 @@ namespace ScreenSpell.Engines
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            using var results = _recognition.Run(new[]
+            var words = Run(_recognition, _labels, input, region, frame);
+
+            // Both recognisers take the same 48 pixel high line, so the second reading reuses
+            // the tensor. A line with an Arabic letter in it is not the English model's
+            // business, and neither is a line nothing was read from.
+            if (_english is null || words.Count == 0 || words.Any(word => word.Text.Any(IsArabic)))
+                return words;
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var english = Run(_english, _englishLabels, input, region, frame);
+            return Score(english) > Score(words) ? english : words;
+        }
+
+        private List<OcrWord> Run(
+            InferenceSession session,
+            string[] labels,
+            DenseTensor<float> input,
+            Region region,
+            ScreenFrame frame)
+        {
+            using var results = session.Run(new[]
             {
-                NamedOnnxValue.CreateFromTensor(_recognition.InputNames[0], input)
+                NamedOnnxValue.CreateFromTensor(session.InputNames[0], input)
             });
 
-            var output = results[0].AsTensor<float>();
-            return Decode(output, region, frame);
+            return Decode(results[0].AsTensor<float>(), labels, region, frame);
+        }
+
+        private static bool IsArabic(char character) =>
+            character is >= '\u0600' and <= '\u06FF' or >= '\uFB50' and <= '\uFEFC';
+
+        /// <summary>How sure a reading is overall, weighted by how much text it found.</summary>
+        private static double Score(IReadOnlyList<OcrWord> words)
+        {
+            if (words.Count == 0)
+                return 0;
+
+            var letters = 0;
+            var total = 0.0;
+
+            foreach (var word in words)
+            {
+                letters += word.Text.Length;
+                total += word.Confidence * word.Text.Length;
+            }
+
+            return letters == 0 ? 0 : total / letters;
         }
 
         /// <summary>
@@ -292,7 +350,11 @@ namespace ScreenSpell.Engines
         /// sits horizontally, which is how each word gets its own box; for Arabic the model
         /// emits in reading order, so the axis is mirrored.
         /// </summary>
-        private IEnumerable<OcrWord> Decode(Tensor<float> output, Region region, ScreenFrame frame)
+        private static List<OcrWord> Decode(
+            Tensor<float> output,
+            string[] labels,
+            Region region,
+            ScreenFrame frame)
         {
             var steps = output.Dimensions[1];
             var classes = output.Dimensions[2];
@@ -317,9 +379,9 @@ namespace ScreenSpell.Engines
                     }
                 }
 
-                if (best != 0 && best != previous && best < _labels.Length)
+                if (best != 0 && best != previous && best < labels.Length)
                 {
-                    foreach (var character in _labels[best])
+                    foreach (var character in labels[best])
                     {
                         text.Add(character);
                         starts.Add(step);
@@ -413,6 +475,7 @@ namespace ScreenSpell.Engines
         {
             _detection?.Dispose();
             _recognition?.Dispose();
+            _english?.Dispose();
             _gate.Dispose();
         }
 
